@@ -5,7 +5,6 @@ import type { ScanSnapshot } from "../discovery/types.js";
 import type { AdapterResult, HerdrClient } from "../herdr/client.js";
 import type { InvocationContext } from "../herdr/context.js";
 import { ChangeTree } from "./ChangeTree.js";
-import { Preview, type PreviewContent } from "./Preview.js";
 import { StatusBar } from "./StatusBar.js";
 import { commandForKey, commandText } from "./keymap.js";
 import { buildRows, groupKey, groupOfKey, windowStart, type Row } from "./tree-model.js";
@@ -40,7 +39,6 @@ export function App(deps: AppDeps) {
   const [initialised, setInitialised] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([groupKey("active")]));
   const [cursorKey, setCursorKey] = useState<string>(groupKey("active"));
-  const [preview, setPreview] = useState<PreviewContent | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [start, setStart] = useState(0);
   const exited = useRef(false);
@@ -103,16 +101,6 @@ export function App(deps: AppDeps) {
 
   const artifactPath = (row: Row): string => path.join(row.change!.directory, row.artifact!);
 
-  const showPreview = async (row: Row) => {
-    try {
-      const body = await deps.readArtifact(artifactPath(row));
-      setPreview({ title: row.artifact!, body });
-      setMessage(null);
-    } catch {
-      setMessage(`File not found: ${row.artifact}`);
-    }
-  };
-
   const openEditor = async (row: Row) => {
     const file = artifactPath(row);
     try {
@@ -174,13 +162,9 @@ export function App(deps: AppDeps) {
       if (current.parentKey) setCursorKey(current.parentKey);
       return;
     }
-    if (key.return) {
-      if (current.kind === "artifact") void showPreview(current);
-      else toggle(current);
-      return;
-    }
-    if (input === "e") {
+    if (key.return || input === "e") {
       if (current.kind === "artifact") void openEditor(current);
+      else if (key.return) toggle(current);
       return;
     }
     const cmd = commandForKey(input);
@@ -188,21 +172,15 @@ export function App(deps: AppDeps) {
   });
 
   const skipped = snapshot?.warnings.length ?? 0;
-  const leftWidth = "45%";
 
   let body: React.ReactNode;
   if (!initialised) body = <Text>{NOT_INITIALISED}</Text>;
   else if (scanning && !snapshot) body = <Text>{SCANNING}</Text>;
   else
     body = (
-      <Box flexDirection="row">
-        <Box flexDirection="column" width={leftWidth} marginRight={1}>
-          {scanning ? <Text dimColor>{SCANNING}</Text> : null}
-          <ChangeTree rows={rows} cursorIndex={cursorIndex} start={start} height={treeHeight} />
-        </Box>
-        <Box flexDirection="column" flexGrow={1}>
-          <Preview content={preview} height={treeHeight} />
-        </Box>
+      <Box flexDirection="column">
+        {scanning ? <Text dimColor>{SCANNING}</Text> : null}
+        <ChangeTree rows={rows} cursorIndex={cursorIndex} start={start} height={treeHeight} />
       </Box>
     );
 

@@ -170,22 +170,24 @@ describe("grouped tree", () => {
   });
 });
 
-describe("preview", () => {
-  it("shows an artifact's text with its relative path as title", async () => {
+describe("Enter", () => {
+  it("Enter on an artifact opens it in the editor", async () => {
     const h = await mount({ snap: three() });
     h.files.set("/repo/changes/add-search/design.md", "# Design\nhello");
     await h.press("j"); await h.press("l"); await h.press("j");
     expect(h.frame()).toMatch(/> .*design\.md/);
     await h.press(ENTER);
-    expect(h.frame()).toContain("# Design");
-    expect(h.frame()).toContain("hello");
+    expect(h.openEditor).toHaveBeenCalledWith(h.client, {
+      projectRoot: "/repo", paneId: "p1", editor: "nvim", filePath: "/repo/changes/add-search/design.md",
+    });
+    expect(h.frame()).toContain("Opened in nvim");
   });
 
-  it("Enter on a change toggles expansion and leaves the preview alone", async () => {
+  it("Enter on a change toggles expansion", async () => {
     const h = await mount({ snap: three() });
     await h.press("j"); await h.press(ENTER);
     expect(h.frame()).toContain("design.md");
-    expect(h.frame()).toContain("Press Enter on an artifact");
+    expect(h.openEditor).not.toHaveBeenCalled();
   });
 
   it("reports a deleted artifact without changing the tree", async () => {
@@ -194,6 +196,7 @@ describe("preview", () => {
     await h.press(ENTER);
     expect(h.frame()).toContain("File not found: design.md");
     expect(h.frame()).toMatch(/> .*design\.md/);
+    expect(h.openEditor).not.toHaveBeenCalled();
   });
 });
 

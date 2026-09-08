@@ -77,27 +77,27 @@ A change node SHALL display its completed and total task counts as `(<complete>/
 - **THEN** the node text shows the change name without task counts
 
 ---
-### Requirement: Preview an artifact inside the pane
+### Requirement: Enter opens an artifact or toggles a node
 
-The pane SHALL have a preview column beside the tree. Pressing Enter on an artifact node SHALL read that Markdown file and show its raw text in the preview column, with the artifact's relative path as the column title. Enter on a group or change node SHALL toggle that node's expansion. When the file no longer exists at the time Enter is pressed, the status bar SHALL show `File not found: <relative path>`, the preview SHALL be unchanged, and the pane SHALL remain usable.
+The tree SHALL occupy the full pane width; there is no preview column. Pressing Enter on an artifact node SHALL behave exactly like pressing `e`: it opens that file in the editor split. Enter on a group or change node SHALL toggle that node's expansion. When the file no longer exists at the time Enter is pressed, the status bar SHALL show `File not found: <relative path>`, no editor SHALL be opened, and the pane SHALL remain usable.
 
-#### Scenario: Preview an artifact
+#### Scenario: Enter on an artifact opens the editor
 
 - **GIVEN** the cursor is on the artifact node `design.md` of change `add-search`
 - **WHEN** the user presses Enter
-- **THEN** the preview column title is `design.md` and its body is the file's text
+- **THEN** the pane asks Herdr to open that file in the editor split, as if `e` had been pressed
 
 #### Scenario: Enter on a change node toggles expansion
 
 - **GIVEN** the cursor is on a collapsed change node
 - **WHEN** the user presses Enter
-- **THEN** the change node expands and the preview is unchanged
+- **THEN** the change node expands and no editor is opened
 
-#### Scenario: Preview a deleted artifact
+#### Scenario: Enter on a deleted artifact
 
-- **GIVEN** an artifact node whose backing file was deleted after the last scan
-- **WHEN** the user presses Enter on that node
-- **THEN** the status bar shows `File not found:` followed by the relative path, and the tree keeps its state
+- **GIVEN** the cursor is on an artifact node whose file has been deleted since the last scan
+- **WHEN** the user presses Enter
+- **THEN** the status bar shows `File not found: <relative path>`, no editor is opened, and the tree is unchanged
 
 ---
 ### Requirement: Open an artifact in the editor
@@ -120,7 +120,7 @@ Pressing `e` on an artifact node SHALL open that file in the user's editor in a 
 
 - **GIVEN** the adapter reports that the split could not be created
 - **WHEN** the user presses `e` on an artifact node
-- **THEN** the status bar shows `Could not open editor` and the tree and preview are unchanged
+- **THEN** the status bar shows `Could not open editor` and the tree is unchanged
 
 ---
 ### Requirement: Rescan on demand

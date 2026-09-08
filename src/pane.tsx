@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { render, useStdout } from "ink";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { scanChanges } from "./discovery/scan.js";
 import { readInvocationContext } from "./herdr/context.js";
 import { createHerdrClient, openInEditorSplit, sendTextToPane } from "./herdr/client.js";
@@ -60,4 +61,5 @@ async function main(): Promise<void> {
   await app.waitUntilExit();
 }
 
-void main();
+const isEntryPoint = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isEntryPoint) void main();
