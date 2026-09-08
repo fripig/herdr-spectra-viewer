@@ -1,0 +1,29 @@
+{
+  "name": "herdr-spectra-viewer",
+  "version": "0.1.0",
+  "description": "Herdr plugin that lists Spectra changes in an overlay pane",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check-dist": "npm run build && test -f dist/pane.js && test -f dist/open.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "ink": "^5.2.1",
+    "react": "^18.3.1",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@types/react": "^18.3.23",
+    "ink-testing-library": "^4.0.0",
+    "smol-toml": "^1.8.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

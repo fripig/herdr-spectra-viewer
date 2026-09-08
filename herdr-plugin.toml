@@ -1,0 +1,24 @@
+id = "spectra-viewer"
+name = "Spectra Viewer"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+platforms = ["macos", "linux"]
+description = "Browse Spectra changes, preview artifacts, and hand /spectra-* commands to your working pane."
+
+[[build]]
+command = ["npm", "ci"]
+
+[[build]]
+command = ["npm", "run", "build"]
+
+[[panes]]
+id = "changes"
+title = "Spectra changes"
+placement = "overlay"
+command = ["node", "dist/pane.js"]
+
+[[actions]]
+id = "open"
+title = "Open Spectra changes"
+contexts = ["workspace", "pane"]
+command = ["node", "dist/open.js"]
