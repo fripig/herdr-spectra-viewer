@@ -5,7 +5,7 @@
 export const MOUSE_ENABLE = "\x1b[?1000h\x1b[?1006h";
 export const MOUSE_DISABLE = "\x1b[?1006l\x1b[?1000l";
 
-export type MouseKind = "press" | "release" | "wheel-up" | "wheel-down";
+export type MouseKind = "press" | "right-press" | "release" | "wheel-up" | "wheel-down";
 
 export interface MouseEvent {
   kind: MouseKind;
@@ -27,6 +27,9 @@ const REPORT = /\x1b?\[<(\d+);(\d+);(\d+)([Mm])/g;
  * Finds every complete SGR report in the chunk. Ink hands `useInput` the report
  * without its leading ESC, so the ESC is optional. Partial reports and unknown
  * buttons yield nothing.
+ *
+ * The button field carries no modifier bits: a right press with Alt held
+ * reports the same button as a plain one, so nothing here can tell them apart.
  */
 export function parseMouse(input: string): MouseEvent[] {
   const events: MouseEvent[] = [];
@@ -40,9 +43,13 @@ export function parseMouse(input: string): MouseEvent[] {
   return events;
 }
 
+/** The button field of a right press. Release reports carry it too, and stay releases. */
+const RIGHT_BUTTON = 2;
+
 function kindOf(button: number, release: boolean): MouseKind | null {
   if (release) return "release";
   if (button === 0) return "press";
+  if (button === RIGHT_BUTTON) return "right-press";
   if (button === 64) return "wheel-up";
   if (button === 65) return "wheel-down";
   return null;

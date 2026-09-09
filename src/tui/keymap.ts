@@ -18,12 +18,16 @@ export const VIEW_HINTS: readonly string[] = [
   "↑↓/jk move", "←→/hl fold", "⏎/e open", "s sort", "/ filter", "@ authors", "y copy", "R rescan", "q quit",
 ];
 
-/** What the two modal input lines accept, shown while they are open. */
+/** What each modal input line accepts, shown while that mode owns the keyboard. */
 export const FILTER_HINTS: readonly string[] = ["type to filter", "⌫ delete", "⏎ keep", "Esc clear"];
 export const AUTHOR_HINTS: readonly string[] = ["↑↓/jk move", "space toggle", "⏎/Esc close"];
+export const MENU_HINTS: readonly string[] = ["↑↓/jk move", "⏎ send", "Esc cancel"];
+
+/** One line per command, as the floating menu and the status bar both draw them. */
+export const MENU_ITEMS: readonly string[] = COMMAND_KEYS.map((c) => `${c.key} ${c.label}`);
 
 /** The command-key line, led by the label that says where the text goes. */
-export const COMMAND_HINTS: readonly string[] = ["send to pane:", ...COMMAND_KEYS.map((c) => `${c.key} ${c.label}`)];
+export const COMMAND_HINTS: readonly string[] = ["send to pane:", ...MENU_ITEMS];
 
 export function commandForKey(key: string): CommandKey | undefined {
   return COMMAND_KEYS.find((c) => c.key === key);

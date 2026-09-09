@@ -40,7 +40,14 @@ manifest — the manifest's `placement` only applies to an invocation that names
 | `q` / Escape         | Quit                                                      |
 | Click a row          | Move the cursor there; on an artifact, open it in the viewer |
 | Click the `▸`/`▾` marker | Expand or collapse that node                          |
+| Right-click a row    | Move the cursor there and open a menu of the five commands above |
 | Mouse wheel          | Move the cursor up or down                                |
+
+The right-click menu is the same five commands with their keys spelled out, drawn over the tree at the
+point you clicked. Move through it with `↑` `↓` or `j` `k` and choose with Enter, or click an item
+outright; Escape or a click anywhere outside closes it without sending. Right-clicking a group row
+opens nothing and says `Select a change first`. Choosing an item does exactly what its key does, so
+everything below about where the command goes applies to both.
 
 A command goes to the pane that invoked the plugin — the one that was focused when the pane
 opened — not to the pane the plugin itself runs in. The command is typed in, never submitted, so you

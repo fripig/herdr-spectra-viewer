@@ -4,7 +4,8 @@ import { render } from "ink-testing-library";
 import { App, NOT_INITIALISED, NO_AUTHORS, SCANNING, SELECT_CHANGE_FIRST, type AppDeps } from "../../src/tui/App.js";
 import type { ScanSnapshot, SpectraChange } from "../../src/discovery/types.js";
 import { fakeClient } from "../herdr/fake-client.js";
-import { COMMAND_HINTS, VIEW_HINTS } from "../../src/tui/keymap.js";
+import { hintLines } from "../../src/tui/StatusBar.js";
+import { COMMAND_HINTS, MENU_HINTS, MENU_ITEMS, VIEW_HINTS } from "../../src/tui/keymap.js";
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // Two macrotasks: one for the render, one for React to flush the passive effects
@@ -20,6 +21,8 @@ const press = (col: number, row: number) => `${ESC}[<0;${col};${row}M`;
 const release = (col: number, row: number) => `${ESC}[<0;${col};${row}m`;
 const wheelUp = (col: number, row: number) => `${ESC}[<64;${col};${row}M`;
 const wheelDown = (col: number, row: number) => `${ESC}[<65;${col};${row}M`;
+const rightPress = (col: number, row: number) => `${ESC}[<2;${col};${row}M`;
+const rightRelease = (col: number, row: number) => `${ESC}[<2;${col};${row}m`;
 
 function change(name: string, group: SpectraChange["group"], extra: Partial<SpectraChange> = {}): SpectraChange {
   return {
@@ -887,6 +890,13 @@ describe("keys arriving faster than a render", () => {
   });
 });
 
+describe("command labels", () => {
+  it("names the five commands once, and the command hint line leads with where the text goes", () => {
+    expect(MENU_ITEMS).toEqual(["d discuss", "a apply", "i ingest", "r archive", "c commit"]);
+    expect(COMMAND_HINTS).toEqual(["send to pane:", ...MENU_ITEMS]);
+  });
+});
+
 describe("key hints fit the pane width", () => {
   const hasLine = (frame: string, text: string) => frame.split("\n").some((l) => l.trim() === text);
 
@@ -942,5 +952,176 @@ describe("the frame fits the pane whatever the width", () => {
     const before = rowsOf(h.frame());
     await h.press("/");
     expect(rowsOf(h.frame())).toBe(before);
+  });
+});
+
+describe("command menu", () => {
+  // Same geometry as the mouse tests: header on row 1, tree rows from row 2.
+  // The menu is drawn over the tree, so a row it covers is read after Escape.
+  // The item labels also live in the status bar's command line, so the menu is
+  // recognised by the box it draws around them.
+  const menuIsOpen = (frame: string) => MENU_ITEMS.every((item) => frame.includes(`\u2502${item}`));
+
+  it("a right press on a change moves the cursor and opens the menu at that row", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press(rightRelease(10, 3));
+    expect(menuIsOpen(h.frame())).toBe(true);
+    // The cursor marker sits left of the menu, so it survives the overlay.
+    expect(h.frame().split("\n")[2].startsWith("> ")).toBe(true);
+    await h.press(ESC);
+    expect(h.frame()).toMatch(/> .*add-search \(3\/8\)/);
+  });
+
+  it("a right press on the marker cells opens the menu without toggling the node", async () => {
+    const h = await mount({ snap: three() });
+    await h.press("j");
+    await h.press("l");
+    expect(h.frame()).toContain("design.md");
+    await h.press(rightPress(5, 3));
+    expect(menuIsOpen(h.frame())).toBe(true);
+    await h.press(ESC);
+    expect(h.frame()).toContain("design.md");
+    expect(h.frame()).toMatch(/> .*add-search \(3\/8\)/);
+  });
+
+  it("a right press on a group node opens no menu and asks for a change", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 6));
+    expect(menuIsOpen(h.frame())).toBe(false);
+    expect(h.frame()).toContain(SELECT_CHANGE_FIRST);
+    expect(h.frame()).toMatch(/> .*Archived \(0\)/);
+  });
+
+  it("a right press on an artifact opens the menu instead of the viewer", async () => {
+    const h = await mount({ snap: three() });
+    h.files.set("/repo/changes/add-search/design.md", "# Design");
+    await h.press("j");
+    await h.press("l");
+    await h.press(rightPress(12, 4));
+    expect(menuIsOpen(h.frame())).toBe(true);
+    expect(h.openEditor).not.toHaveBeenCalled();
+    await h.press(ESC);
+    expect(h.frame()).toMatch(/> .*design\.md/);
+  });
+
+  it("swallows tree clicks while it is open, so the cursor stays where the menu was opened", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press(press(10, 4));
+    await h.press(release(10, 4));
+    await h.press(ESC);
+    expect(h.frame()).toMatch(/> .*add-search \(3\/8\)/);
+    expect(h.frame()).not.toMatch(/> .*no-tasks/);
+  });
+
+  it("moves down the items and sends the one under the menu cursor", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press("j");
+    await h.press(ENTER);
+    expect(h.sendText).toHaveBeenCalledWith(h.client, "p1", "/spectra-apply add-search");
+    expect(menuIsOpen(h.frame())).toBe(false);
+    expect(h.frame()).toContain("Sent: /spectra-apply add-search");
+  });
+
+  it("opens on the first item and stops at both ends", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press(UP);
+    await h.press(ENTER);
+    expect(h.sendText).toHaveBeenCalledWith(h.client, "p1", "/spectra-discuss add-search");
+    await h.press(rightPress(10, 3));
+    for (let i = 0; i < 8; i++) await h.press(DOWN);
+    await h.press(ENTER);
+    expect(h.sendText).toHaveBeenLastCalledWith(h.client, "p1", "/spectra-commit add-search");
+  });
+
+  it("sends the owning change of an artifact row", async () => {
+    const h = await mount({ snap: three() });
+    await h.press("j");
+    await h.press("l");
+    await h.press(rightPress(12, 4));
+    await h.pressFast("j", "j");
+    await h.press(ENTER);
+    expect(h.sendText).toHaveBeenCalledWith(h.client, "p1", "/spectra-ingest add-search");
+  });
+
+  // A right press at (10, 3) puts the box at terminal columns 10..20, rows 3..9,
+  // so its item cells are columns 11..19 and rows 4..8.
+  it("a click on an item sends its command and closes the menu", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press(press(13, 8));
+    expect(h.sendText).toHaveBeenCalledWith(h.client, "p1", "/spectra-commit add-search");
+    expect(menuIsOpen(h.frame())).toBe(false);
+  });
+
+  it("a click on the border leaves the menu open and sends nothing", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press(press(13, 3));
+    expect(menuIsOpen(h.frame())).toBe(true);
+    expect(h.sendText).not.toHaveBeenCalled();
+  });
+
+  it("a click outside closes the menu and sends nothing", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press(press(2, 12));
+    expect(menuIsOpen(h.frame())).toBe(false);
+    expect(h.sendText).not.toHaveBeenCalled();
+    expect(h.copy).not.toHaveBeenCalled();
+    expect(h.openEditor).not.toHaveBeenCalled();
+  });
+
+  it("a release on an item does nothing", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press(release(13, 8));
+    expect(menuIsOpen(h.frame())).toBe(true);
+    expect(h.sendText).not.toHaveBeenCalled();
+  });
+
+  it("the wheel does not scroll the tree while the menu is open", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press(wheelDown(13, 6));
+    await h.press(wheelUp(13, 6));
+    expect(menuIsOpen(h.frame())).toBe(true);
+    await h.press(ESC);
+    expect(h.frame()).toMatch(/> .*add-search \(3\/8\)/);
+  });
+
+  it("takes over the hint lines without resizing the tree", async () => {
+    const h = await mount({ snap: three() });
+    // The tree gets whatever rows the hint lines leave, so equal hint lines
+    // means an equal tree.
+    expect(hintLines(80, MENU_HINTS).length).toBe(hintLines(80, null).length);
+    await h.press(rightPress(10, 3));
+    const f = h.frame();
+    for (const hint of MENU_HINTS) expect(f).toContain(hint);
+    expect(f).not.toContain("q quit");
+    expect(f).not.toContain("send to pane:");
+    // The group row below the menu is still on the line it was on before.
+    expect(f.split("\n")[5]).toContain("Archi");
+  });
+
+  it("Escape closes the menu and sends nothing", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press(ESC);
+    expect(menuIsOpen(h.frame())).toBe(false);
+    expect(h.sendText).not.toHaveBeenCalled();
+    expect(h.copy).not.toHaveBeenCalled();
+    expect(h.onExit).not.toHaveBeenCalled();
+  });
+
+  it("q does not exit while the menu is open", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(rightPress(10, 3));
+    await h.press("q");
+    expect(h.onExit).not.toHaveBeenCalled();
+    expect(menuIsOpen(h.frame())).toBe(true);
   });
 });

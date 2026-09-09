@@ -5,12 +5,14 @@ import type { ScanSnapshot } from "../discovery/types.js";
 import type { AdapterResult, HerdrClient, ViewerResult } from "../herdr/client.js";
 import type { InvocationContext } from "../herdr/context.js";
 import { AuthorPicker } from "./AuthorPicker.js";
+import { CommandMenu } from "./CommandMenu.js";
 import { ChangeTree } from "./ChangeTree.js";
 import { FilterLine } from "./FilterLine.js";
 import { StatusBar, hintLines } from "./StatusBar.js";
-import { AUTHOR_HINTS, FILTER_HINTS, commandForKey, commandText } from "./keymap.js";
+import { AUTHOR_HINTS, COMMAND_KEYS, FILTER_HINTS, MENU_HINTS, MENU_ITEMS, commandForKey, commandText } from "./keymap.js";
 import { authorCandidates, filterSnapshot, type AuthorCandidate } from "./change-filter.js";
 import { compareChanges, nextSortMode, type SortMode } from "./change-order.js";
+import { menuContains, menuGeometry, menuItemAt, type MenuRect } from "./command-menu.js";
 import { hitTest, looksLikeMouse, parseMouse, type Layout, type MouseEvent } from "./mouse.js";
 import { GROUP_IDS, buildRows, groupKey, groupOfKey, windowStart, type Row } from "./tree-model.js";
 
@@ -19,8 +21,8 @@ export const SCANNING = "Scanning…";
 export const SELECT_CHANGE_FIRST = "Select a change first";
 export const NO_AUTHORS = "No authors to filter by";
 
-/** Which keys mean what: tree dispatches commands, the other two collect input. */
-export type InputMode = "tree" | "filter" | "authors";
+/** Which keys mean what: tree dispatches commands, the other three collect input. */
+export type InputMode = "tree" | "filter" | "authors" | "menu";
 
 /** What the header says in tree mode: the sort mode always, each filter when it is on. */
 export function headerText(sortMode: SortMode, filterText: string, authorLabels: readonly string[]): string {
@@ -91,9 +93,14 @@ export function App(deps: AppDeps) {
   const [filterText, setFilterText] = useState("");
   const [authors, setAuthors] = useState<Set<string>>(() => new Set());
   const [pickerIndex, setPickerIndex] = useState(0);
+  // Where the floating command menu sits, and which of its items is under the
+  // menu cursor. A null rect means no menu is open.
+  const [menu, setMenu] = useState<MenuRect | null>(null);
+  const [menuIndex, setMenuIndex] = useState(0);
   const exited = useRef(false);
   const viewerPane = deps.viewerPane;
-  const modalHints = mode === "filter" ? FILTER_HINTS : mode === "authors" ? AUTHOR_HINTS : null;
+  const modalHints =
+    mode === "filter" ? FILTER_HINTS : mode === "authors" ? AUTHOR_HINTS : mode === "menu" ? MENU_HINTS : null;
   // The status bar grows as the pane narrows, so the tree is what is left over.
   const treeHeight = Math.max(3, deps.height - FIXED_ROWS - hintLines(deps.width, modalHints).length);
 
@@ -262,10 +269,56 @@ export function App(deps: AppDeps) {
     rowCount: rows.length,
   };
 
+  const closeMenu = () => {
+    setMenu(null);
+    setMode("tree");
+  };
+
+  /** Sends an item's command through the same path its key would, then closes. */
+  const chooseMenuItem = (index: number) => {
+    const item = COMMAND_KEYS[index];
+    closeMenu();
+    if (item) void sendCommand(item.command);
+  };
+
+  /** Opens the menu over the row just clicked, unless that row is a group. */
+  const openMenu = (row: Row, at: MouseEvent) => {
+    if (!row.change) {
+      setMessage(SELECT_CHANGE_FIRST);
+      return;
+    }
+    setMenu(menuGeometry({ col: at.col, row: at.row }, { width: deps.width, height: deps.height }));
+    setMenuIndex(0);
+    setMode("menu");
+  };
+
+  /**
+   * A press on an item chooses it; one on the border leaves the menu alone, so
+   * the frame is not a way to dismiss it by accident; one anywhere else closes
+   * the menu. The wheel is inert, so the tree does not scroll out from under an
+   * open menu.
+   */
+  const handleMenuMouse = (ev: MouseEvent) => {
+    if (!menu) return;
+    if (ev.kind === "wheel-up" || ev.kind === "wheel-down") return;
+    const item = menuItemAt(menu, ev.col, ev.row);
+    if (item !== null) return chooseMenuItem(item);
+    if (!menuContains(menu, ev.col, ev.row)) closeMenu();
+  };
+
   const handleMouse = (events: MouseEvent[]) => {
-    if (!initialised || !snapshot || mode !== "tree") return;
+    if (!initialised || !snapshot) return;
     for (const ev of events) {
       if (ev.kind === "release") continue;
+      // A chunk can carry the event that opens the menu and the next one after
+      // it, and the mode decides what the next one means, so it is read from
+      // the ref rather than from the render this handler was created in.
+      const active = modeRef.current;
+      if (active === "menu") {
+        handleMenuMouse(ev);
+        continue;
+      }
+      if (active !== "tree") continue;
       if (ev.kind === "wheel-up" || ev.kind === "wheel-down") {
         const treeRow = ev.row - 1 - layout.treeTop;
         if (treeRow >= 0 && treeRow < layout.treeHeight) moveCursor(ev.kind === "wheel-up" ? -1 : 1);
@@ -275,6 +328,10 @@ export function App(deps: AppDeps) {
       if (!hit) continue;
       const row = rows[hit.rowIndex];
       setCursorKey(row.key);
+      if (ev.kind === "right-press") {
+        openMenu(row, ev);
+        continue;
+      }
       if (hit.onMarker) {
         if (row.expandable) toggle(row);
       } else if (row.kind === "artifact") {
@@ -310,6 +367,13 @@ export function App(deps: AppDeps) {
         const candidate = candidates[pickerIndex];
         if (candidate) toggleAuthor(candidate.id);
       }
+      return;
+    }
+    if (active === "menu") {
+      if (key.escape) return closeMenu();
+      if (key.return) return chooseMenuItem(menuIndex);
+      if (key.upArrow || input === "k") return setMenuIndex((i) => Math.max(0, i - 1));
+      if (key.downArrow || input === "j") return setMenuIndex((i) => Math.min(COMMAND_KEYS.length - 1, i + 1));
       return;
     }
     if (input === "q" || key.escape) {
@@ -383,6 +447,7 @@ export function App(deps: AppDeps) {
     <Box flexDirection="column" height={deps.height}>
       <Box flexGrow={1}>{body}</Box>
       <StatusBar message={message} skipped={skipped} width={deps.width} modalHints={modalHints} />
+      {menu ? <CommandMenu items={MENU_ITEMS} cursorIndex={menuIndex} rect={menu} /> : null}
     </Box>
   );
 }

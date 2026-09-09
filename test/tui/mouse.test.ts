@@ -17,6 +17,8 @@ describe("parseMouse", () => {
   const samples: Array<[string, MouseEvent | null]> = [
     [`${ESC}[<0;17;18M`, { kind: "press", button: 0, col: 17, row: 18 }],
     [`${ESC}[<0;17;18m`, { kind: "release", button: 0, col: 17, row: 18 }],
+    [`${ESC}[<2;17;18M`, { kind: "right-press", button: 2, col: 17, row: 18 }],
+    [`${ESC}[<2;17;18m`, { kind: "release", button: 2, col: 17, row: 18 }],
     [`${ESC}[<64;10;21M`, { kind: "wheel-up", button: 64, col: 10, row: 21 }],
     [`${ESC}[<65;10;21M`, { kind: "wheel-down", button: 65, col: 10, row: 21 }],
     [`${ESC}[<32;9;5M`, null],
