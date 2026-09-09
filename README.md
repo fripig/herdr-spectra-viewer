@@ -85,25 +85,32 @@ prints and returns makes the pane vanish before anything can be read; most of th
 flag for exactly this. The path is appended rather than substituted, so a pipeline needs a wrapper
 script on `PATH` rather than a `SPECTRA_VIEWER` value.
 
-Readers that fit the contract above. The plugin depends on none of them, and installs none of them:
+Readers that fit the contract above, each one opened on a spec through this plugin in a 74-column
+split. The plugin depends on none of them, and installs none of them:
 
-| Command | What it gives you |
-| --- | --- |
-| `less` | The default. Raw markdown, nothing to install. |
-| `bat --style=plain` | Raw markdown with syntax highlighting; pages on its own. |
-| `glow -p` | Rendered markdown with margins and word-wrapped paragraphs, from one static binary. |
-| `mdcat -p` | Rendered markdown, plus inline images on terminals that support them. |
-| `mdless` | Rendered markdown, written as a pager from the start. |
-| `frogmouth` | A full markdown browser in the pane, with navigation of its own. |
+| Command | Leave it with | What you get |
+| --- | --- | --- |
+| `less` | `q` | The default. Raw markdown, nothing to install. |
+| `bat --style=plain` | `q` | Raw markdown with syntax highlighting. |
+| `mdcat -p` | `q` | Rendered markdown, wrapped to the width the pane actually has. |
+| `glow -p` | `q` | Rendered markdown from one static binary, but see the width note below. |
+| `mdless` | `q` | Renders headings; leaves `**` markers, and does not reflow paragraphs. |
+| `frogmouth` | **`Ctrl+Q`** | A markdown browser with navigation of its own, in the pane. |
 
-A renderer picks its own wrapping width, which need not be the width of the split — glow 3.0.0 wraps
-at 80 columns whatever the pane is. Overflow costs legibility and nothing else: the pane still holds
-until the reader quits, and still closes itself when it does. Adjust it with the reader's own width
-flag, which reaches it through the shell either way: `glow -p -w 74`, or `glow -p -w $(tput cols)`.
+The pane closes when the reader exits, so the reader's own quit key is the key that closes the split.
+That is `q` for everything above except `frogmouth`, which is a Textual application: `q` and `Escape`
+both leave it running, and only `Ctrl+Q` ends it. A reader whose quit key you do not know leaves a
+pane you have to close with `herdr pane close`.
 
-Rendering earns its keep on these files: `less` hard-wraps a long `SHALL` paragraph mid-word, while a
-renderer breaks it on spaces and indents it under its heading. The delta headings and the `**WHEN**`
-/ `**THEN**` scenario lines stay legible either way.
+A renderer also picks its own wrapping width, which need not be the width of the split. `mdcat` and
+`frogmouth` take the pane's width; glow 3.0.0 wraps at 80 whatever the pane is, so in a narrower
+split the terminal breaks the surplus onto a line of its own. Overflow costs legibility and nothing
+else — the pane still holds, and still closes itself on the way out — and the reader's own width flag
+adjusts it: `glow -p -w 74`, or `glow -p -w $(tput cols)`, since the viewer runs through a shell.
+
+Rendering earns its keep on these files: `less` hard-wraps a long `SHALL` paragraph mid-word, so
+`disable` arrives as `disab` / `le`, while a renderer breaks it on spaces and indents it under its
+heading. The delta headings and the `**WHEN**` / `**THEN**` scenario lines stay legible either way.
 
 Closing the changes pane takes the viewer pane with it: quitting with `q`, or letting the pane close
 itself after it hands a command over, closes the viewer that is still open. When Herdr closes the
