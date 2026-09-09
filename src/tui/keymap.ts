@@ -13,6 +13,15 @@ export const COMMAND_KEYS: readonly CommandKey[] = [
   { key: "c", command: "/spectra-commit", label: "commit" },
 ];
 
+/** Tree-mode keys that change the view rather than send a command. */
+export const VIEW_HINTS: readonly string[] = [
+  "↑↓/jk move", "←→/hl fold", "⏎/e open", "s sort", "/ filter", "@ authors", "y copy", "R rescan", "q quit",
+];
+
+/** What the two modal input lines accept, shown while they are open. */
+export const FILTER_HINTS = "type to filter  ⌫ delete  ⏎ keep  Esc clear";
+export const AUTHOR_HINTS = "↑↓/jk move  space toggle  ⏎/Esc close";
+
 export function commandForKey(key: string): CommandKey | undefined {
   return COMMAND_KEYS.find((c) => c.key === key);
 }

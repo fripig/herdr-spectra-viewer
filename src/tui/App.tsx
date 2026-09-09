@@ -4,15 +4,36 @@ import path from "node:path";
 import type { ScanSnapshot } from "../discovery/types.js";
 import type { AdapterResult, HerdrClient, ViewerResult } from "../herdr/client.js";
 import type { InvocationContext } from "../herdr/context.js";
+import { AuthorPicker } from "./AuthorPicker.js";
 import { ChangeTree } from "./ChangeTree.js";
+import { FilterLine } from "./FilterLine.js";
 import { StatusBar } from "./StatusBar.js";
-import { commandForKey, commandText } from "./keymap.js";
+import { AUTHOR_HINTS, FILTER_HINTS, commandForKey, commandText } from "./keymap.js";
+import { authorCandidates, filterSnapshot, type AuthorCandidate } from "./change-filter.js";
+import { compareChanges, nextSortMode, type SortMode } from "./change-order.js";
 import { hitTest, looksLikeMouse, parseMouse, type Layout, type MouseEvent } from "./mouse.js";
-import { buildRows, groupKey, groupOfKey, windowStart, type Row } from "./tree-model.js";
+import { GROUP_IDS, buildRows, groupKey, groupOfKey, windowStart, type Row } from "./tree-model.js";
 
 export const NOT_INITIALISED = "This project is not initialised for Spectra (no openspec directory).";
 export const SCANNING = "Scanning…";
 export const SELECT_CHANGE_FIRST = "Select a change first";
+export const NO_AUTHORS = "No authors to filter by";
+
+/** Which keys mean what: tree dispatches commands, the other two collect input. */
+export type InputMode = "tree" | "filter" | "authors";
+
+/** What the header says in tree mode: the sort mode always, each filter when it is on. */
+export function headerText(sortMode: SortMode, filterText: string, authorLabels: readonly string[]): string {
+  const parts = [`sort: ${sortMode}`];
+  if (filterText.length > 0) parts.push(`filter: ${filterText}`);
+  if (authorLabels.length > 0) parts.push(`authors: ${authorLabels.join(", ")}`);
+  return parts.join("  ");
+}
+
+/** Keystrokes that are text: control characters never reach the filter line. */
+function printable(input: string): string {
+  return [...input].filter((ch) => { const c = ch.codePointAt(0)!; return c >= 32 && c !== 127; }).join("");
+}
 
 export interface AppDeps {
   projectRoot: string;
@@ -42,7 +63,8 @@ export interface AppDeps {
   height: number;
 }
 
-const RESERVED_ROWS = 4;
+/** Header line plus the four status-bar rows below the tree. */
+const RESERVED_ROWS = 5;
 
 export function App(deps: AppDeps) {
   const [snapshot, setSnapshot] = useState<ScanSnapshot | null>(null);
@@ -52,10 +74,19 @@ export function App(deps: AppDeps) {
   const [cursorKey, setCursorKey] = useState<string>(groupKey("active"));
   const [message, setMessage] = useState<string | null>(null);
   const [start, setStart] = useState(0);
+  const [mode, setModeState] = useState<InputMode>("tree");
+  // Keystrokes can arrive faster than React commits, and the mode decides what
+  // the next one means, so the handler reads it from a ref rather than from the
+  // render that happened to be current when the key landed.
+  const modeRef = useRef<InputMode>("tree");
+  const setMode = (next: InputMode) => { modeRef.current = next; setModeState(next); };
+  const [sortMode, setSortMode] = useState<SortMode>("modified");
+  const [filterText, setFilterText] = useState("");
+  const [authors, setAuthors] = useState<Set<string>>(() => new Set());
+  const [pickerIndex, setPickerIndex] = useState(0);
   const exited = useRef(false);
   const viewerPane = deps.viewerPane;
   const { stdout } = useStdout();
-
   const treeHeight = Math.max(3, deps.height - RESERVED_ROWS);
 
   const runScan = useCallback(async () => {
@@ -76,7 +107,33 @@ export function App(deps: AppDeps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const rows: Row[] = useMemo(() => (snapshot ? buildRows(snapshot, expanded) : []), [snapshot, expanded]);
+  const candidates: AuthorCandidate[] = useMemo(
+    () => (snapshot ? authorCandidates(snapshot) : []),
+    [snapshot],
+  );
+
+  // An author who proposed nothing in the new snapshot is no longer offered, so
+  // leaving them selected would filter the tree down invisibly. Nothing is
+  // written unless something is actually dropped, so the common rescan costs no
+  // extra render.
+  useEffect(() => {
+    if (authors.size === 0) return;
+    const offered = new Set(candidates.map((c) => c.id));
+    const kept = [...authors].filter((id) => offered.has(id));
+    if (kept.length !== authors.size) setAuthors(new Set(kept));
+  }, [candidates, authors]);
+
+  // Sort first, then filter: the order within a group is a property of the
+  // snapshot, not of what happens to be visible.
+  const view = useMemo(() => {
+    if (!snapshot) return null;
+    const compare = compareChanges(sortMode);
+    const sorted = { ...snapshot };
+    for (const g of GROUP_IDS) sorted[g] = [...snapshot[g]].sort(compare);
+    return filterSnapshot(sorted, { text: filterText, authors });
+  }, [snapshot, sortMode, filterText, authors]);
+
+  const rows: Row[] = useMemo(() => (view ? buildRows(view, expanded) : []), [view, expanded]);
 
   // Keep the cursor on an existing row; after a rescan fall back to the node's group.
   let cursorIndex = rows.findIndex((r) => r.key === cursorKey);
@@ -165,10 +222,31 @@ export function App(deps: AppDeps) {
     await copyFallback(`Copied: ${text}`);
   };
 
-  // Geometry of the tree as rendered below: the "Scanning…" line during a
-  // rescan is the only row above the tree today; the actions change adds a header.
+  /** The change name alone: no group, no proposer, no counts, no newline. */
+  const copyName = async () => {
+    if (!current || !current.change) {
+      setMessage(SELECT_CHANGE_FIRST);
+      return;
+    }
+    const name = current.change.name;
+    const r = await deps.copy(name);
+    setMessage(r.ok ? `Copied: ${name}` : `Copy failed: ${name}`);
+  };
+
+  const toggleAuthor = (id: string) => {
+    setAuthors((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  };
+
+  const selectedLabels = candidates.filter((c) => authors.has(c.id)).map((c) => c.label);
+
+  // Geometry of the tree as rendered below: the header always sits above it, and
+  // the "Scanning…" line takes one more row during a rescan.
   const layout: Layout = {
-    treeTop: scanning && snapshot ? 1 : 0,
+    treeTop: (scanning && snapshot ? 1 : 0) + 1,
     treeHeight,
     treeLeft: 0,
     treeWidth: stdout.columns || 80,
@@ -177,7 +255,7 @@ export function App(deps: AppDeps) {
   };
 
   const handleMouse = (events: MouseEvent[]) => {
-    if (!initialised || !snapshot) return;
+    if (!initialised || !snapshot || mode !== "tree") return;
     for (const ev of events) {
       if (ev.kind === "release") continue;
       if (ev.kind === "wheel-up" || ev.kind === "wheel-down") {
@@ -202,6 +280,30 @@ export function App(deps: AppDeps) {
       handleMouse(parseMouse(input));
       return;
     }
+    // The mode decides what a key means, so `q` is a letter while typing.
+    const active = modeRef.current;
+    if (active === "filter") {
+      if (key.return) return setMode("tree");
+      if (key.escape) {
+        setFilterText("");
+        setMode("tree");
+        return;
+      }
+      if (key.backspace || key.delete) return setFilterText((t) => t.slice(0, -1));
+      const text = printable(input);
+      if (text) setFilterText((t) => t + text);
+      return;
+    }
+    if (active === "authors") {
+      if (key.return || key.escape) return setMode("tree");
+      if (key.upArrow || input === "k") return setPickerIndex((i) => Math.max(0, i - 1));
+      if (key.downArrow || input === "j") return setPickerIndex((i) => Math.min(candidates.length - 1, i + 1));
+      if (input === " ") {
+        const candidate = candidates[pickerIndex];
+        if (candidate) toggleAuthor(candidate.id);
+      }
+      return;
+    }
     if (input === "q" || key.escape) {
       exit(0);
       return;
@@ -209,6 +311,28 @@ export function App(deps: AppDeps) {
     if (scanning || !initialised) return;
     if (input === "R") {
       void runScan();
+      return;
+    }
+    if (input === "s") {
+      setSortMode(nextSortMode);
+      return;
+    }
+    if (input === "/") {
+      setMode("filter");
+      return;
+    }
+    if (input === "@") {
+      // One candidate cannot narrow anything, so the picker would only mislead.
+      if (candidates.length < 2) {
+        setMessage(NO_AUTHORS);
+        return;
+      }
+      setPickerIndex(0);
+      setMode("authors");
+      return;
+    }
+    if (input === "y") {
+      void copyName();
       return;
     }
     if (key.upArrow || input === "k") return moveCursor(-1);
@@ -238,14 +362,21 @@ export function App(deps: AppDeps) {
     body = (
       <Box flexDirection="column">
         {scanning ? <Text dimColor>{SCANNING}</Text> : null}
-        <ChangeTree rows={rows} cursorIndex={cursorIndex} start={start} height={treeHeight} />
+        {mode === "filter"
+          ? <FilterLine text={filterText} />
+          : <Text dimColor wrap="truncate-end">{headerText(sortMode, filterText, selectedLabels)}</Text>}
+        {mode === "authors"
+          ? <AuthorPicker candidates={candidates} selected={authors} cursorIndex={pickerIndex} height={treeHeight} />
+          : <ChangeTree rows={rows} cursorIndex={cursorIndex} start={start} height={treeHeight} />}
       </Box>
     );
+
+  const modalHints = mode === "filter" ? FILTER_HINTS : mode === "authors" ? AUTHOR_HINTS : null;
 
   return (
     <Box flexDirection="column" height={deps.height}>
       <Box flexGrow={1}>{body}</Box>
-      <StatusBar message={message} skipped={skipped} />
+      <StatusBar message={message} skipped={skipped} modalHints={modalHints} />
     </Box>
   );
 }

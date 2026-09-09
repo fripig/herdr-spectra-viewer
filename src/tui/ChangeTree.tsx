@@ -15,6 +15,21 @@ function marker(row: Row): string {
   return row.expanded ? "▾ " : "▸ ";
 }
 
+/**
+ * A change reads name first, so the proposer and the counts that follow it are
+ * de-emphasised rather than competing with the name for attention.
+ */
+function content(row: Row): React.ReactNode {
+  if (row.kind !== "change") return row.label;
+  return (
+    <>
+      {row.change!.name}
+      {row.proposer ? <Text dimColor> {row.proposer}</Text> : null}
+      {row.progressText ? <Text dimColor> {row.progressText}</Text> : null}
+    </>
+  );
+}
+
 export function ChangeTree({ rows, cursorIndex, start, height }: ChangeTreeProps) {
   const slice = rows.slice(start, start + height);
   return (
@@ -25,7 +40,7 @@ export function ChangeTree({ rows, cursorIndex, start, height }: ChangeTreeProps
         const indent = "  ".repeat(row.depth);
         return (
           <Text key={row.key} inverse={selected} bold={row.kind === "group"}>
-            {selected ? "> " : "  "}{indent}{marker(row)}{row.label}
+            {selected ? "> " : "  "}{indent}{marker(row)}{content(row)}
           </Text>
         );
       })}
