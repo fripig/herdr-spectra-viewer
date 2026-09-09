@@ -2,7 +2,7 @@
 
 Herdr is a terminal workspace manager. A Herdr plugin is a directory holding a `herdr-plugin.toml` manifest plus any executable Herdr can launch. There is no plugin SDK: a plugin pane is an ordinary terminal running the plugin's command as a TUI, and the plugin talks back to Herdr by executing the binary named in `HERDR_BIN_PATH`. Herdr injects the invocation context through environment variables (`HERDR_PANE_ID`, `HERDR_WORKSPACE_ID`, `HERDR_PLUGIN_CONTEXT_JSON`, and others).
 
-The behaviour being ported comes from the idea-spectra-viewer IntelliJ plugin, whose specs are at `/path/to/idea-spectra-viewer/openspec/specs/`. That plugin has two capabilities: `change-discovery` (file-system scan, pure logic) and `changes-tool-window` (Swing tree, editor integration, terminal integration). The discovery logic carries over unchanged. The tool-window behaviour has to be re-expressed for a keyboard-driven TUI and for Herdr's pane model.
+The behaviour being ported comes from the idea-spectra-viewer IntelliJ plugin, whose specs are at [openspec/specs](https://github.com/fripig/idea-spectra-viewer/tree/main/openspec/specs). That plugin has two capabilities: `change-discovery` (file-system scan, pure logic) and `changes-tool-window` (Swing tree, editor integration, terminal integration). The discovery logic carries over unchanged. The tool-window behaviour has to be re-expressed for a keyboard-driven TUI and for Herdr's pane model.
 
 This repository is currently empty apart from the Spectra configuration. The discussion that produced this design is recorded in `openspec/notes/2026-09-08-herdr-plugin-discussion.md`.
 

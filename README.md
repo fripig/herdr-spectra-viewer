@@ -9,7 +9,7 @@ one-key sending of `/spectra-*` commands to the pane that opened it.
 Requires Node.js 20 or newer and Herdr 0.9.0 or newer.
 
 ```sh
-git clone <this repository> ~/.herdr/plugins/spectra-viewer
+git clone https://github.com/fripig/herdr-spectra-viewer ~/.herdr/plugins/spectra-viewer
 herdr plugin link ~/.herdr/plugins/spectra-viewer
 ```
 

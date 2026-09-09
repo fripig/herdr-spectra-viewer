@@ -2,7 +2,7 @@
 
 參考來源：
 - herdr plugin 文件 https://herdr.dev/docs/plugins/（pane = 跑在 terminal 裡的 TUI；整個 `herdr` CLI 就是 API）
-- 移植對象：`/path/to/idea-spectra-viewer/openspec/specs/`（change-discovery 7 條、changes-tool-window 12 條）
+- 移植對象：[idea-spectra-viewer 的 openspec/specs](https://github.com/fripig/idea-spectra-viewer/tree/main/openspec/specs)（change-discovery 7 條、changes-tool-window 12 條）
 
 ## Decision
 
