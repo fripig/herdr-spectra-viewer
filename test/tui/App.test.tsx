@@ -31,6 +31,7 @@ function snapshot(partial: Partial<ScanSnapshot> = {}): ScanSnapshot {
 interface MountOpts {
   snap?: ScanSnapshot;
   paneId?: string | null;
+  commandPaneId?: string | null;
   hasOpenspec?: boolean;
   height?: number;
   scan?: AppDeps["scan"];
@@ -64,9 +65,15 @@ async function mount(opts: MountOpts = {}): Promise<Harness> {
     opts.viewerOk === false ? { ok: false as const, reason: "x" } : { ok: true as const, paneId: `p${nextPane++}` },
   );
   const onExit = vi.fn();
+  const ownPane = opts.paneId === undefined ? "p1" : opts.paneId;
   const deps: AppDeps = {
     projectRoot: "/repo",
-    context: { projectRoot: "/repo", projectRootFromContext: true, paneId: opts.paneId === undefined ? "p1" : opts.paneId, herdrBin: "/x/herdr" },
+    context: {
+      projectRoot: "/repo", projectRootFromContext: true,
+      paneId: ownPane,
+      commandPaneId: opts.commandPaneId === undefined ? ownPane : opts.commandPaneId,
+      herdrBin: "/x/herdr",
+    },
     client, viewer: opts.viewer ?? "nvim", scan,
     hasOpenspec: async () => opts.hasOpenspec ?? true,
     readArtifact: async (p) => { const c = files.get(p); if (c === undefined) throw new Error("ENOENT"); return c; },
@@ -333,6 +340,22 @@ describe("send a Spectra command", () => {
     expect(h.sendText).toHaveBeenCalledWith(h.client, "p1", text);
     expect(h.onExit).toHaveBeenCalledWith(0);
     expect(h.scan).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends to the pane that invoked the plugin, not to its own pane", async () => {
+    const h = await mount({ snap: three(), paneId: "w4:p1C", commandPaneId: "w4:p1" });
+    await h.press("j");
+    await h.press("a");
+    expect(h.sendText).toHaveBeenCalledWith(h.client, "w4:p1", "/spectra-apply add-search");
+    expect(h.sendText.mock.calls.some((c) => c[1] === "w4:p1C")).toBe(false);
+    expect(h.onExit).toHaveBeenCalledWith(0);
+  });
+
+  it("copies when the plugin has a pane of its own but no invoking pane", async () => {
+    const h = await mount({ snap: three(), paneId: "w4:p1C", commandPaneId: null });
+    await h.press("j"); await h.press("c");
+    expect(h.sendText).not.toHaveBeenCalled();
+    expect(h.frame()).toContain("Copied: /spectra-commit add-search");
   });
 
   it("uses the artifact's owning change", async () => {

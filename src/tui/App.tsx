@@ -139,8 +139,11 @@ export function App(deps: AppDeps) {
       const c = await deps.copy(text);
       setMessage(c.ok ? okMessage : `Copy failed: ${text}`);
     };
-    if (deps.context.paneId) {
-      const r = await deps.sendText(deps.client, deps.context.paneId, text);
+    // The destination is the pane that invoked the plugin, which is not this
+    // pane when Herdr opened the plugin in a pane of its own.
+    const target = deps.context.commandPaneId;
+    if (target) {
+      const r = await deps.sendText(deps.client, target, text);
       if (r.ok) {
         exit(0);
         return;

@@ -23,12 +23,23 @@ Herdr runs `npm ci` and `npm run build` from the manifest's build steps. Open th
 | `↑` `↓` / `j` `k`    | Move the cursor                                           |
 | `←` `→` / `h` `l`    | Collapse / expand the node under the cursor               |
 | Enter or `e`         | Open the artifact under the cursor in a viewer split       |
-| `d` `a` `i` `r` `c`  | Send `/spectra-discuss`, `apply`, `ingest`, `archive`, `commit` with the selected change to the invoking pane |
+| `d` `a` `i` `r` `c`  | Send `/spectra-discuss`, `apply`, `ingest`, `archive`, `commit` with the selected change to the pane that opened this one |
 | `R`                  | Rescan                                                    |
 | `q` / Escape         | Quit                                                      |
 | Click a row          | Move the cursor there; on an artifact, open it in the viewer |
 | Click the `▸`/`▾` marker | Expand or collapse that node                          |
 | Mouse wheel          | Move the cursor up or down                                |
+
+A command goes to the pane that invoked the plugin — the one that was focused when the pane
+opened — not to the pane the plugin itself runs in. Opening the pane from a keybinding or the
+`spectra-viewer: open` action gives the plugin a pane of its own, and the command still lands in the
+pane you were working in, which then takes focus back as this one closes. The command is typed in,
+never submitted, so you can edit it first.
+
+When no invoking pane is known, or when Herdr refuses the write, the command goes to the system
+clipboard instead and the pane stays open: the status bar shows `Copied: <command>` for the first
+case and `Herdr send failed, copied instead` for the second, or `Copy failed: <command>` when the
+clipboard write fails too.
 
 The pane turns on terminal mouse reporting while it runs. Selecting text inside the pane with the
 mouse therefore needs **Shift** held while dragging (the terminal's usual override); reporting is
