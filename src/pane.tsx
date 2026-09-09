@@ -6,6 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { scanChanges } from "./discovery/scan.js";
 import { readInvocationContext } from "./herdr/context.js";
+import { readConfiguredViewer } from "./config.js";
 import { createHerdrClient, focusPane, openInEditorSplit, sendTextToPane } from "./herdr/client.js";
 import { copyToClipboard } from "./herdr/clipboard.js";
 import { resolveProjectRoot } from "./herdr/project-root.js";
@@ -56,13 +57,14 @@ export const DEFAULT_VIEWER = "less";
 export const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } as const;
 
 /**
- * The command that shows an artifact. `EDITOR` is deliberately not consulted:
- * it is shared with git and every other tool, so a pager here would leak into
- * them. Blank and whitespace-only values fall back to the pager.
+ * The command that shows an artifact, taken from the first source that yields a
+ * non-empty string: the environment variable, which overrides for one run; the
+ * plugin's own configuration file, which is the standing preference; then the
+ * pager. `EDITOR` is deliberately not consulted: it is shared with git and every
+ * other tool, so a pager here would leak into them.
  */
-export function resolveViewer(env: NodeJS.ProcessEnv): string {
-  const value = env.SPECTRA_VIEWER?.trim();
-  return value ? value : DEFAULT_VIEWER;
+export function resolveViewer(env: NodeJS.ProcessEnv, configured: string | null = null): string {
+  return env.SPECTRA_VIEWER?.trim() || configured?.trim() || DEFAULT_VIEWER;
 }
 
 /**
@@ -122,7 +124,7 @@ async function main(): Promise<void> {
     resolveProjectRoot(context, client),
     startupGeometry(client, context.paneId),
   ]);
-  const viewer = resolveViewer(process.env);
+  const viewer = resolveViewer(process.env, readConfiguredViewer(process.env));
 
   const mouse = mouseLifecycle((s) => process.stdout.write(s));
   mouse.start();
