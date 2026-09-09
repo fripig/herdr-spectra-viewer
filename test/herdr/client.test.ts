@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { sendTextToPane, focusPane, openInEditorSplit, createHerdrClient, paneGeometry, shellQuote } from "../../src/herdr/client.js";
+import {
+  sendTextToPane,
+  focusPane,
+  openInEditorSplit,
+  createHerdrClient,
+  extractSplitRatio,
+  paneGeometry,
+  shellQuote,
+} from "../../src/herdr/client.js";
 import { fakeClient } from "./fake-client.js";
 
 describe("sendTextToPane", () => {
@@ -35,6 +43,18 @@ describe("focusPane", () => {
 
 describe("openInEditorSplit", () => {
   const opts = { projectRoot: "/repo", paneId: "p1", viewer: "less", filePath: "/repo/openspec/changes/add-search/design.md", previousViewerPane: null };
+  // The layout an open with a remembered viewer pane asks for first: the plugin
+  // pane `p1` and the viewer pane `p9`, side by side at 27 and 50 columns.
+  const sideBySide = JSON.stringify({
+    result: {
+      layout: {
+        panes: [
+          { pane_id: "p1", rect: { x: 78, y: 0, width: 27, height: 48 } },
+          { pane_id: "p9", rect: { x: 105, y: 0, width: 50, height: 48 } },
+        ],
+      },
+    },
+  });
 
   it("splits then runs the viewer in the new pane, ending with exit so the pane closes", async () => {
     const c = fakeClient([{ stdout: '{"result":{"pane":{"pane_id":"p9"}}}' }, {}]);
@@ -57,14 +77,22 @@ describe("openInEditorSplit", () => {
     expect(c.calls[1]).toEqual(["pane", "run", "p9", `less '/repo/it'\\''s.md'; exit`]);
   });
 
-  it("closes the remembered viewer pane before splitting the new one", async () => {
-    const c = fakeClient([{}, { stdout: '{"result":{"pane":{"pane_id":"p10"}}}' }, {}]);
+  it("measures the layout, then closes the remembered viewer pane, then splits", async () => {
+    const c = fakeClient([{ stdout: sideBySide }, {}, { stdout: '{"result":{"pane":{"pane_id":"p10"}}}' }, {}]);
     expect(await openInEditorSplit(c, { ...opts, previousViewerPane: "p9" })).toEqual({ ok: true, paneId: "p10" });
     expect(c.calls.map((a) => a.slice(0, 3))).toEqual([
+      ["pane", "layout", "--pane"],
       ["pane", "close", "p9"],
       ["pane", "split", "--pane"],
       ["pane", "run", "p10"],
     ]);
+  });
+
+  it("asks for the layout of its own pane and gives the split the width the user set", async () => {
+    const c = fakeClient([{ stdout: sideBySide }, {}, { stdout: '{"result":{"pane":{"pane_id":"p10"}}}' }, {}]);
+    await openInEditorSplit(c, { ...opts, previousViewerPane: "p9" });
+    expect(c.calls[0]).toEqual(["pane", "layout", "--pane", "p1"]);
+    expect(c.calls[2]).toEqual(["pane", "split", "--pane", "p1", "--direction", "right", "--cwd", "/repo", "--ratio", "0.3506"]);
   });
 
   it("issues no close when no viewer pane is remembered", async () => {
@@ -73,9 +101,40 @@ describe("openInEditorSplit", () => {
     expect(c.calls.some((a) => a[1] === "close")).toBe(false);
   });
 
+  it("asks for no layout when there is nothing to measure against", async () => {
+    // Nothing to measure: a first open has no viewer pane beside it, and an open
+    // that does not know its own pane id cannot name one to the layout call.
+    const split = { stdout: '{"result":{"pane":{"pane_id":"p10"}}}' };
+    const cases = [
+      { o: opts, responses: [split, {}] },
+      { o: { ...opts, paneId: null, previousViewerPane: "p9" }, responses: [{}, split, {}] },
+    ];
+    for (const { o, responses } of cases) {
+      const c = fakeClient(responses);
+      expect((await openInEditorSplit(c, o)).ok).toBe(true);
+      expect(c.calls.some((a) => a[1] === "layout")).toBe(false);
+      expect(c.calls.find((a) => a[1] === "split")).not.toContain("--ratio");
+    }
+  });
+
+  // Each row is a layout the ratio cannot be worked out from; the open has to
+  // carry on with the split it would have issued before this was ever measured.
+  it.each([
+    ["the layout call exits non-zero", { exitCode: 2 }],
+    ["the layout output is not valid JSON", { stdout: "not json" }],
+    ["a pane is absent from the layout", { stdout: sideBySide.replace('"pane_id":"p9"', '"pane_id":"p404"') }],
+    ["a width is not a positive integer", { stdout: sideBySide.replace('"width":50', '"width":0') }],
+    ["the panes are not side by side", { stdout: sideBySide.replace('"x":105', '"x":0') }],
+  ])("leaves the width to Herdr when %s", async (_case, layout) => {
+    const c = fakeClient([layout, {}, { stdout: '{"result":{"pane":{"pane_id":"p10"}}}' }, {}]);
+    expect(await openInEditorSplit(c, { ...opts, previousViewerPane: "p9" })).toEqual({ ok: true, paneId: "p10" });
+    expect(c.calls[2]).toEqual(["pane", "split", "--pane", "p1", "--direction", "right", "--cwd", "/repo"]);
+  });
+
   it("opens anyway when closing the remembered pane reports it is already gone", async () => {
     // Herdr exits zero for a stale pane id and reports the error in its output.
     const c = fakeClient([
+      { stdout: sideBySide },
       { stdout: '{"error":{"code":"pane_not_found","message":"pane p9 not found"}}' },
       { stdout: '{"result":{"pane":{"pane_id":"p10"}}}' }, {},
     ]);
@@ -203,5 +262,64 @@ describe("paneGeometry", () => {
 
   it("reports no geometry without spawning when there is no binary", async () => {
     expect(await paneGeometry(createHerdrClient(null), "p7")).toBeNull();
+  });
+});
+
+describe("extractSplitRatio", () => {
+  // The shape Herdr reports, with the numbers a 155-column window produced: the
+  // plugin pane starts at column 78, and the viewer pane starts where it ends.
+  const layout = (own: object, viewer: object) =>
+    JSON.stringify({
+      result: {
+        layout: {
+          panes: [
+            { pane_id: "p1", rect: { x: 78, y: 0, width: 27, height: 48, ...own } },
+            { pane_id: "p9", rect: { x: 105, y: 0, width: 50, height: 48, ...viewer } },
+          ],
+        },
+      },
+    });
+  const ratio = (stdout: string) => extractSplitRatio(stdout, "p1", "p9");
+
+  it("gives the plugin pane's share of the two widths, to four places", () => {
+    expect(ratio(layout({}, {}))).toBe("0.3506");
+  });
+
+  it("gives the share of an even split the same way", () => {
+    expect(ratio(layout({ x: 78, width: 39 }, { x: 117, width: 38 }))).toBe("0.5065");
+  });
+
+  it("returns null when either pane is absent from the layout", () => {
+    const stdout = layout({}, {});
+    expect(extractSplitRatio(stdout, "p1", "p404")).toBeNull();
+    expect(extractSplitRatio(stdout, "p404", "p9")).toBeNull();
+  });
+
+  it("returns null when a width is not a positive integer", () => {
+    for (const width of [0, -1, 27.5, "27", undefined]) {
+      expect(ratio(layout({ width }, { x: 105 }))).toBeNull();
+      expect(ratio(layout({}, { width }))).toBeNull();
+    }
+  });
+
+  it("returns null when the viewer pane does not begin where the plugin pane ends", () => {
+    expect(ratio(layout({}, { x: 106 }))).toBeNull();
+    expect(ratio(layout({}, { x: 0 }))).toBeNull();
+  });
+
+  it("returns null when the two panes do not share a top or a height", () => {
+    expect(ratio(layout({}, { y: 1 }))).toBeNull();
+    expect(ratio(layout({}, { height: 24 }))).toBeNull();
+  });
+
+  it("returns null when a position is missing or not a whole column", () => {
+    for (const x of [undefined, -1, 78.5, "78"]) expect(ratio(layout({ x }, {}))).toBeNull();
+    expect(ratio(layout({ y: undefined }, { y: undefined }))).toBeNull();
+  });
+
+  it("returns null when the layout is not readable", () => {
+    for (const stdout of ["", "not json", "{}", '{"result":{"layout":{"panes":{}}}}']) {
+      expect(ratio(stdout)).toBeNull();
+    }
   });
 });
