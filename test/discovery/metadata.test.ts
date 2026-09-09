@@ -27,10 +27,10 @@ describe("readChangeMetadata: creation date", () => {
 
 describe("readChangeMetadata: proposer", () => {
   it.each([
-    ["created_by: fripig <999359+fripig@users.noreply.github.com>", "fripig"],
+    ["created_by: fripig <fripig@example.com>", "fripig"],
     ["created_by: Alice Chen <a@example.com>", "Alice Chen"],
     ["created_by: fripig", "fripig"],
-    ["created_by: <999359+fripig@users.noreply.github.com>", null],
+    ["created_by: <fripig@example.com>", null],
     ["created_by:", null],
     ["schema: spec-driven", null],
   ])("yaml %j → %j", async (yaml, expected) => {
@@ -44,12 +44,12 @@ describe("readChangeMetadata: proposer", () => {
   });
 
   it("reports both fields from one file, independently", async () => {
-    await file(root, "c/.openspec.yaml", "created: last Tuesday\ncreated_by: fripig <999359+fripig@users.noreply.github.com>\n");
+    await file(root, "c/.openspec.yaml", "created: last Tuesday\ncreated_by: fripig <fripig@example.com>\n");
     expect(await readChangeMetadata(path.join(root, "c"))).toEqual({ createdAt: null, proposer: "fripig" });
   });
 
   it("parseProposer strips the email", () => {
-    expect(parseProposer("fripig <999359+fripig@users.noreply.github.com>")).toBe("fripig");
+    expect(parseProposer("fripig <fripig@example.com>")).toBe("fripig");
   });
 });
 

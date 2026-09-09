@@ -113,17 +113,17 @@ The modification date SHALL be the most recent modification time among the chang
 
 | `created_by` value           | Proposer     | Change reported |
 | ---------------------------- | ------------ | --------------- |
-| `fripig <999359+fripig@users.noreply.github.com>`  | `fripig`     | yes             |
+| `fripig <fripig@example.com>`  | `fripig`     | yes             |
 | `Alice Chen <a@example.com>` | `Alice Chen` | yes             |
 | `fripig`                     | `fripig`     | yes             |
-| `<999359+fripig@users.noreply.github.com>`         | unknown      | yes             |
+| `<fripig@example.com>`         | unknown      | yes             |
 | `created_by:` with no value  | unknown      | yes             |
 | field absent                 | unknown      | yes             |
 | file absent                  | unknown      | yes             |
 
 #### Scenario: One metadata field being unusable does not affect the other
 
-- **GIVEN** a change directory whose `.openspec.yaml` contains `created: last Tuesday` and `created_by: fripig <999359+fripig@users.noreply.github.com>`
+- **GIVEN** a change directory whose `.openspec.yaml` contains `created: last Tuesday` and `created_by: fripig <fripig@example.com>`
 - **WHEN** a scan reports that change
 - **THEN** the creation date is unknown and the proposer is `fripig`
 
