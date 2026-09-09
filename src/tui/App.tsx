@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import path from "node:path";
 import type { ScanSnapshot } from "../discovery/types.js";
 import type { AdapterResult, HerdrClient } from "../herdr/client.js";
@@ -7,6 +7,7 @@ import type { InvocationContext } from "../herdr/context.js";
 import { ChangeTree } from "./ChangeTree.js";
 import { StatusBar } from "./StatusBar.js";
 import { commandForKey, commandText } from "./keymap.js";
+import { hitTest, looksLikeMouse, parseMouse, type Layout, type MouseEvent } from "./mouse.js";
 import { buildRows, groupKey, groupOfKey, windowStart, type Row } from "./tree-model.js";
 
 export const NOT_INITIALISED = "This project is not initialised for Spectra (no openspec directory).";
@@ -17,14 +18,14 @@ export interface AppDeps {
   projectRoot: string;
   context: InvocationContext;
   client: HerdrClient;
-  editor: string;
+  viewer: string;
   scan: (projectRoot: string) => Promise<ScanSnapshot>;
   hasOpenspec: (projectRoot: string) => Promise<boolean>;
   readArtifact: (absolutePath: string) => Promise<string>;
   sendText: (client: HerdrClient, paneId: string, text: string) => Promise<AdapterResult>;
   openEditor: (
     client: HerdrClient,
-    opts: { projectRoot: string; paneId: string | null; editor: string; filePath: string },
+    opts: { projectRoot: string; paneId: string | null; viewer: string; filePath: string },
   ) => Promise<AdapterResult>;
   copy: (text: string) => Promise<AdapterResult>;
   onExit: (code: number) => void;
@@ -42,6 +43,7 @@ export function App(deps: AppDeps) {
   const [message, setMessage] = useState<string | null>(null);
   const [start, setStart] = useState(0);
   const exited = useRef(false);
+  const { stdout } = useStdout();
 
   const treeHeight = Math.max(3, deps.height - RESERVED_ROWS);
 
@@ -110,9 +112,9 @@ export function App(deps: AppDeps) {
       return;
     }
     const r = await deps.openEditor(deps.client, {
-      projectRoot: deps.projectRoot, paneId: deps.context.paneId, editor: deps.editor, filePath: file,
+      projectRoot: deps.projectRoot, paneId: deps.context.paneId, viewer: deps.viewer, filePath: file,
     });
-    setMessage(r.ok ? `Opened in ${deps.editor}` : "Could not open editor");
+    setMessage(r.ok ? `Opened in ${deps.viewer}` : "Could not open viewer");
   };
 
   const exit = (code: number) => {
@@ -143,7 +145,43 @@ export function App(deps: AppDeps) {
     await copyFallback(`Copied: ${text}`);
   };
 
+  // Geometry of the tree as rendered below: the "Scanning…" line during a
+  // rescan is the only row above the tree today; the actions change adds a header.
+  const layout: Layout = {
+    treeTop: scanning && snapshot ? 1 : 0,
+    treeHeight,
+    treeLeft: 0,
+    treeWidth: stdout.columns || 80,
+    windowStart: start,
+    rowCount: rows.length,
+  };
+
+  const handleMouse = (events: MouseEvent[]) => {
+    if (!initialised || !snapshot) return;
+    for (const ev of events) {
+      if (ev.kind === "release") continue;
+      if (ev.kind === "wheel-up" || ev.kind === "wheel-down") {
+        const treeRow = ev.row - 1 - layout.treeTop;
+        if (treeRow >= 0 && treeRow < layout.treeHeight) moveCursor(ev.kind === "wheel-up" ? -1 : 1);
+        continue;
+      }
+      const hit = hitTest(ev, layout, (i) => rows[i]?.depth ?? 0);
+      if (!hit) continue;
+      const row = rows[hit.rowIndex];
+      setCursorKey(row.key);
+      if (hit.onMarker) {
+        if (row.expandable) toggle(row);
+      } else if (row.kind === "artifact") {
+        void openEditor(row);
+      }
+    }
+  };
+
   useInput((input, key) => {
+    if (looksLikeMouse(input)) {
+      handleMouse(parseMouse(input));
+      return;
+    }
     if (input === "q" || key.escape) {
       exit(0);
       return;

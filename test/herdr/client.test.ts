@@ -16,15 +16,38 @@ describe("sendTextToPane", () => {
 });
 
 describe("openInEditorSplit", () => {
-  const opts = { projectRoot: "/repo", paneId: "p1", editor: "nvim", filePath: "/repo/openspec/changes/add-search/design.md" };
+  const opts = { projectRoot: "/repo", paneId: "p1", viewer: "less", filePath: "/repo/openspec/changes/add-search/design.md" };
 
-  it("splits then runs the editor in the new pane", async () => {
+  it("splits then runs the viewer in the new pane, ending with exit so the pane closes", async () => {
     const c = fakeClient([{ stdout: '{"result":{"pane":{"pane_id":"p9"}}}' }, {}]);
     expect(await openInEditorSplit(c, opts)).toEqual({ ok: true });
     expect(c.calls).toEqual([
       ["pane", "split", "--pane", "p1", "--direction", "right", "--cwd", "/repo"],
-      ["pane", "run", "p9", "nvim '/repo/openspec/changes/add-search/design.md'"],
+      ["pane", "run", "p9", "less '/repo/openspec/changes/add-search/design.md'; exit"],
     ]);
+  });
+
+  it("keeps a viewer's own flags in front of the path", async () => {
+    const c = fakeClient([{ stdout: '{"result":{"pane":{"pane_id":"p9"}}}' }, {}]);
+    await openInEditorSplit(c, { ...opts, viewer: "bat --style=plain" });
+    expect(c.calls[1]).toEqual(["pane", "run", "p9", "bat --style=plain '/repo/openspec/changes/add-search/design.md'; exit"]);
+  });
+
+  it("quotes a path containing a single quote and still appends exit", async () => {
+    const c = fakeClient([{ stdout: '{"result":{"pane":{"pane_id":"p9"}}}' }, {}]);
+    await openInEditorSplit(c, { ...opts, filePath: "/repo/it's.md" });
+    expect(c.calls[1]).toEqual(["pane", "run", "p9", `less '/repo/it'\\''s.md'; exit`]);
+  });
+
+  it("splits again for a second open instead of reusing the first viewer pane", async () => {
+    const c = fakeClient([
+      { stdout: '{"result":{"pane":{"pane_id":"p9"}}}' }, {},
+      { stdout: '{"result":{"pane":{"pane_id":"p10"}}}' }, {},
+    ]);
+    await openInEditorSplit(c, opts);
+    await openInEditorSplit(c, opts);
+    expect(c.calls.filter((a) => a[1] === "split")).toHaveLength(2);
+    expect(c.calls.filter((a) => a[1] === "run").map((a) => a[2])).toEqual(["p9", "p10"]);
   });
 
   it("omits --pane when no pane id is known", async () => {

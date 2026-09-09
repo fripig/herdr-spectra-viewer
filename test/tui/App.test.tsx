@@ -12,6 +12,10 @@ const DOWN = `${ESC}[B`;
 const LEFT = `${ESC}[D`;
 const RIGHT = `${ESC}[C`;
 const ENTER = "\r";
+const press = (col: number, row: number) => `${ESC}[<0;${col};${row}M`;
+const release = (col: number, row: number) => `${ESC}[<0;${col};${row}m`;
+const wheelUp = (col: number, row: number) => `${ESC}[<64;${col};${row}M`;
+const wheelDown = (col: number, row: number) => `${ESC}[<65;${col};${row}M`;
 
 function change(name: string, group: SpectraChange["group"], extra: Partial<SpectraChange> = {}): SpectraChange {
   return {
@@ -32,8 +36,8 @@ interface MountOpts {
   scan?: AppDeps["scan"];
   sendOk?: boolean;
   copyOk?: boolean;
-  editorOk?: boolean;
-  editor?: string;
+  viewerOk?: boolean;
+  viewer?: string;
 }
 
 interface Harness {
@@ -55,12 +59,12 @@ async function mount(opts: MountOpts = {}): Promise<Harness> {
   const scan = vi.fn(opts.scan ?? (async () => opts.snap ?? snapshot()));
   const sendText = vi.fn(async () => (opts.sendOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
   const copy = vi.fn(async () => (opts.copyOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
-  const openEditor = vi.fn(async () => (opts.editorOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
+  const openEditor = vi.fn(async () => (opts.viewerOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
   const onExit = vi.fn();
   const deps: AppDeps = {
     projectRoot: "/repo",
     context: { projectRoot: "/repo", projectRootFromContext: true, paneId: opts.paneId === undefined ? "p1" : opts.paneId, herdrBin: "/x/herdr" },
-    client, editor: opts.editor ?? "nvim", scan,
+    client, viewer: opts.viewer ?? "nvim", scan,
     hasOpenspec: async () => opts.hasOpenspec ?? true,
     readArtifact: async (p) => { const c = files.get(p); if (c === undefined) throw new Error("ENOENT"); return c; },
     sendText, openEditor, copy, onExit, height: opts.height ?? 20,
@@ -171,14 +175,14 @@ describe("grouped tree", () => {
 });
 
 describe("Enter", () => {
-  it("Enter on an artifact opens it in the editor", async () => {
+  it("Enter on an artifact opens it in the viewer", async () => {
     const h = await mount({ snap: three() });
     h.files.set("/repo/changes/add-search/design.md", "# Design\nhello");
     await h.press("j"); await h.press("l"); await h.press("j");
     expect(h.frame()).toMatch(/> .*design\.md/);
     await h.press(ENTER);
     expect(h.openEditor).toHaveBeenCalledWith(h.client, {
-      projectRoot: "/repo", paneId: "p1", editor: "nvim", filePath: "/repo/changes/add-search/design.md",
+      projectRoot: "/repo", paneId: "p1", viewer: "nvim", filePath: "/repo/changes/add-search/design.md",
     });
     expect(h.frame()).toContain("Opened in nvim");
   });
@@ -200,7 +204,7 @@ describe("Enter", () => {
   });
 });
 
-describe("open in editor", () => {
+describe("open in viewer", () => {
   async function onArtifact(opts: MountOpts = {}) {
     const h = await mount({ snap: three(), ...opts });
     h.files.set("/repo/changes/add-search/proposal.md", "p");
@@ -209,25 +213,32 @@ describe("open in editor", () => {
     return h;
   }
 
-  it("asks the adapter to open the file with the editor", async () => {
+  it("asks the adapter to open the file in the viewer", async () => {
     const h = await onArtifact();
     await h.press("e");
     expect(h.openEditor).toHaveBeenCalledWith(h.client, {
-      projectRoot: "/repo", paneId: "p1", editor: "nvim", filePath: "/repo/changes/add-search/proposal.md",
+      projectRoot: "/repo", paneId: "p1", viewer: "nvim", filePath: "/repo/changes/add-search/proposal.md",
     });
     expect(h.frame()).toContain("Opened in nvim");
   });
 
-  it("uses the configured fallback editor name", async () => {
-    const h = await onArtifact({ editor: "vi" });
+  it("uses the configured viewer command", async () => {
+    const h = await onArtifact({ viewer: "vi" });
     await h.press("e");
-    expect(h.openEditor.mock.calls[0][1]).toMatchObject({ editor: "vi" });
+    expect(h.openEditor.mock.calls[0][1]).toMatchObject({ viewer: "vi" });
+  });
+
+  it("keeps the plugin pane open after an artifact is opened", async () => {
+    const h = await onArtifact();
+    await h.press("e");
+    expect(h.onExit).not.toHaveBeenCalled();
+    expect(h.frame()).toMatch(/> .*proposal\.md/);
   });
 
   it("reports adapter failure", async () => {
-    const h = await onArtifact({ editorOk: false });
+    const h = await onArtifact({ viewerOk: false });
     await h.press("e");
-    expect(h.frame()).toContain("Could not open editor");
+    expect(h.frame()).toContain("Could not open viewer");
   });
 
   it("reports a missing file and does not call the adapter", async () => {
@@ -343,5 +354,97 @@ describe("send a Spectra command", () => {
     await h.press("j"); await h.press("l"); await h.press("a");
     expect(h.scan).toHaveBeenCalledTimes(1);
     expect(h.frame()).toContain("design.md");
+  });
+});
+
+describe("mouse", () => {
+  // three(): row 1 "Active (2)" (expanded), row 2 "add-search (3/8)", row 3 "no-tasks", row 4 "Parked (1)", row 5 "Archived (0)".
+  it("a mouse report never quits the pane, sends, or copies", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(press(17, 18));
+    await h.press(release(17, 18));
+    await h.press(`${ESC}[<0;17`);
+    expect(h.onExit).not.toHaveBeenCalled();
+    expect(h.sendText).not.toHaveBeenCalled();
+    expect(h.copy).not.toHaveBeenCalled();
+    expect(h.frame()).toMatch(/> .*Active \(2\)/);
+  });
+
+  it("click on a label moves the cursor and leaves expansion unchanged", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(press(10, 2));
+    expect(h.frame()).toMatch(/> .*add-search \(3\/8\)/);
+    expect(h.frame()).not.toContain("design.md");
+  });
+
+  it("click on the marker cells toggles the node and keeps the cursor on it", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(press(3, 1));
+    expect(h.frame()).toMatch(/> .*Active \(2\)/);
+    expect(h.frame()).not.toContain("add-search");
+    await h.press(press(4, 1));
+    expect(h.frame()).toContain("add-search");
+  });
+
+  it("click on an artifact opens it in the viewer", async () => {
+    const h = await mount({ snap: three() });
+    h.files.set("/repo/changes/add-search/design.md", "# Design");
+    await h.press("j"); await h.press("l");
+    expect(h.frame().split("\n")[2]).toContain("design.md");
+    await h.press(press(12, 3));
+    expect(h.frame()).toMatch(/> .*design\.md/);
+    expect(h.openEditor).toHaveBeenCalledWith(h.client, {
+      projectRoot: "/repo", paneId: "p1", viewer: "nvim", filePath: "/repo/changes/add-search/design.md",
+    });
+    expect(h.frame()).toContain("Opened in nvim");
+  });
+
+  it("click on a missing artifact reports it and opens nothing", async () => {
+    const h = await mount({ snap: three() });
+    await h.press("j"); await h.press("l");
+    await h.press(press(12, 3));
+    expect(h.frame()).toContain("File not found: design.md");
+    expect(h.openEditor).not.toHaveBeenCalled();
+    expect(h.frame()).toMatch(/> .*design\.md/);
+  });
+
+  it("click below the last node or on the status bar does nothing", async () => {
+    const h = await mount({ snap: three(), height: 20 });
+    await h.press(press(5, 8));
+    await h.press(press(5, 19));
+    expect(h.frame()).toMatch(/> .*Active \(2\)/);
+    expect(h.frame()).toContain("add-search");
+  });
+
+  it("click accounts for a scrolled window and a row rendered above the tree", async () => {
+    const many = snapshot({ active: Array.from({ length: 30 }, (_, i) => change(`chg-${String(i).padStart(2, "0")}`, "active")) });
+    let resolve: (s: ScanSnapshot) => void = () => {};
+    let first = true;
+    const scan: AppDeps["scan"] = () => {
+      if (first) { first = false; return Promise.resolve(many); }
+      return new Promise<ScanSnapshot>((r) => { resolve = r; });
+    };
+    const h = await mount({ scan, height: 10 }); // treeHeight 6
+    for (let i = 0; i < 10; i++) await h.press("j"); // cursor 10, window starts at 5
+    await h.press("R"); // "Scanning…" now occupies the row above the tree
+    expect(h.frame().split("\n")[0]).toContain(SCANNING);
+    await h.press(press(10, 3));
+    expect(h.frame()).toMatch(/> .*chg-05/);
+    resolve(many);
+  });
+
+  it("wheel over the tree moves the cursor one row and does not wrap", async () => {
+    const h = await mount({ snap: three() });
+    await h.press(wheelDown(5, 4));
+    expect(h.frame()).toMatch(/> .*add-search/);
+    await h.press(wheelUp(5, 4));
+    await h.press(wheelUp(5, 4));
+    expect(h.frame()).toMatch(/> .*Active \(2\)/);
+  });
+
+  it("wheel on the status bar does nothing", async () => {
+    const h = await mount({ snap: three(), height: 20 });
+    await h.press(wheelDown(5, 19));
+    expect(h.frame()).toMatch(/> .*Active \(2\)/);
   });
 });

@@ -57,9 +57,15 @@ export function extractPaneCwd(stdout: string): string | null {
   }
 }
 
+/**
+ * Splits a pane and shows the artifact in it. The command ends with `exit` so
+ * the pane's shell dies with the viewer and Herdr reclaims the pane; the
+ * separator is `;` rather than `&&` so a failing viewer leaves nothing behind
+ * either.
+ */
 export async function openInEditorSplit(
   client: HerdrClient,
-  opts: { projectRoot: string; paneId: string | null; editor: string; filePath: string },
+  opts: { projectRoot: string; paneId: string | null; viewer: string; filePath: string },
 ): Promise<AdapterResult> {
   const splitArgs = ["pane", "split"];
   if (opts.paneId) splitArgs.push("--pane", opts.paneId);
@@ -68,7 +74,7 @@ export async function openInEditorSplit(
   if (split.exitCode !== 0) return { ok: false, reason: `pane split exited ${split.exitCode}` };
   const newPane = extractPaneId(split.stdout);
   if (!newPane) return { ok: false, reason: "pane split output has no pane id" };
-  const run = await client.run(["pane", "run", newPane, `${opts.editor} ${shellQuote(opts.filePath)}`]);
+  const run = await client.run(["pane", "run", newPane, `${opts.viewer} ${shellQuote(opts.filePath)}; exit`]);
   return run.exitCode === 0 ? { ok: true } : { ok: false, reason: `pane run exited ${run.exitCode}` };
 }
 
