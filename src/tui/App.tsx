@@ -23,6 +23,8 @@ export interface AppDeps {
   hasOpenspec: (projectRoot: string) => Promise<boolean>;
   readArtifact: (absolutePath: string) => Promise<string>;
   sendText: (client: HerdrClient, paneId: string, text: string) => Promise<AdapterResult>;
+  /** Moves keyboard focus from this pane back to the pane on its left. */
+  focusPane: (client: HerdrClient, opts: { paneId: string }) => Promise<AdapterResult>;
   openEditor: (
     client: HerdrClient,
     opts: { projectRoot: string; paneId: string | null; viewer: string; filePath: string; previousViewerPane: string | null },
@@ -150,7 +152,11 @@ export function App(deps: AppDeps) {
     if (target) {
       const r = await deps.sendText(deps.client, target, text);
       if (r.ok) {
-        exit(0);
+        // The send already succeeded, so a focus that does not happen is worth
+        // saying but never worth a clipboard write.
+        const own = deps.context.paneId;
+        const focused = own ? await deps.focusPane(deps.client, { paneId: own }) : { ok: false as const, reason: "no pane of its own" };
+        setMessage(focused.ok ? `Sent: ${text}` : "Sent, but could not focus pane");
         return;
       }
       await copyFallback("Herdr send failed, copied instead");

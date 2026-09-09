@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sendTextToPane, openInEditorSplit, createHerdrClient, shellQuote } from "../../src/herdr/client.js";
+import { sendTextToPane, focusPane, openInEditorSplit, createHerdrClient, shellQuote } from "../../src/herdr/client.js";
 import { fakeClient } from "./fake-client.js";
 
 describe("sendTextToPane", () => {
@@ -12,6 +12,24 @@ describe("sendTextToPane", () => {
   it("reports failure on non-zero exit", async () => {
     const c = fakeClient([{ exitCode: 2 }]);
     expect((await sendTextToPane(c, "p1", "x")).ok).toBe(false);
+  });
+});
+
+describe("focusPane", () => {
+  it("focuses the pane left of the plugin's own pane", async () => {
+    const c = fakeClient();
+    expect(await focusPane(c, { paneId: "p7" })).toEqual({ ok: true });
+    expect(c.calls).toEqual([["pane", "focus", "--pane", "p7", "--direction", "left"]]);
+  });
+
+  it("reports failure naming the exit code", async () => {
+    const c = fakeClient([{ exitCode: 2 }]);
+    expect(await focusPane(c, { paneId: "p7" })).toEqual({ ok: false, reason: "pane focus exited 2" });
+  });
+
+  it("reports failure without spawning when there is no binary", async () => {
+    const client = createHerdrClient(null);
+    expect((await focusPane(client, { paneId: "p7" })).ok).toBe(false);
   });
 });
 

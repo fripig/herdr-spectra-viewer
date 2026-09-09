@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { scanChanges } from "./discovery/scan.js";
 import { readInvocationContext } from "./herdr/context.js";
-import { createHerdrClient, openInEditorSplit, sendTextToPane } from "./herdr/client.js";
+import { createHerdrClient, focusPane, openInEditorSplit, sendTextToPane } from "./herdr/client.js";
 import { copyToClipboard } from "./herdr/clipboard.js";
 import { resolveProjectRoot } from "./herdr/project-root.js";
 import { App, type AppDeps } from "./tui/App.js";
@@ -122,6 +122,7 @@ async function main(): Promise<void> {
       }}
       readArtifact={(p) => readFile(p, "utf8")}
       sendText={sendTextToPane}
+      focusPane={focusPane}
       openEditor={openInEditorSplit}
       copy={(text) => copyToClipboard(text)}
       viewerPane={viewerPane}

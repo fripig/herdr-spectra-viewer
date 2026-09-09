@@ -8,8 +8,20 @@ export interface OpenDeps {
   stderr: (line: string) => void;
 }
 
+/**
+ * The placement flags are what put the pane beside the working pane instead of
+ * over it; the manifest's own placement stays the fallback for an invocation
+ * that passes none. No target pane is named: Herdr splits the focused pane,
+ * which is the pane that invoked the action.
+ */
 export function openPaneArgs(pluginId: string): string[] {
-  return ["plugin", "pane", "open", "--plugin", pluginId, "--entrypoint", "changes"];
+  return [
+    "plugin", "pane", "open",
+    "--plugin", pluginId,
+    "--entrypoint", "changes",
+    "--placement", "split",
+    "--direction", "right",
+  ];
 }
 
 export async function runOpenAction(deps: OpenDeps): Promise<number> {

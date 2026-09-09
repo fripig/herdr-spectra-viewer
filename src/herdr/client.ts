@@ -40,6 +40,16 @@ export async function sendTextToPane(client: HerdrClient, paneId: string, text: 
   return r.exitCode === 0 ? { ok: true } : { ok: false, reason: `send-text exited ${r.exitCode}` };
 }
 
+/**
+ * Hands keyboard focus back to the pane the plugin sits beside. The direction
+ * is fixed by the right split the open action asks for: the plugin pane is on
+ * the right, so the working pane is to its left.
+ */
+export async function focusPane(client: HerdrClient, opts: { paneId: string }): Promise<AdapterResult> {
+  const r = await client.run(["pane", "focus", "--pane", opts.paneId, "--direction", "left"]);
+  return r.exitCode === 0 ? { ok: true } : { ok: false, reason: `pane focus exited ${r.exitCode}` };
+}
+
 export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }

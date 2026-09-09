@@ -32,6 +32,7 @@ interface MountOpts {
   snap?: ScanSnapshot;
   paneId?: string | null;
   commandPaneId?: string | null;
+  focusOk?: boolean;
   hasOpenspec?: boolean;
   height?: number;
   scan?: AppDeps["scan"];
@@ -48,6 +49,7 @@ interface Harness {
   files: Map<string, string>;
   client: ReturnType<typeof fakeClient>;
   sendText: ReturnType<typeof vi.fn>;
+  focusPane: ReturnType<typeof vi.fn>;
   copy: ReturnType<typeof vi.fn>;
   openEditor: ReturnType<typeof vi.fn>;
   onExit: ReturnType<typeof vi.fn>;
@@ -60,6 +62,7 @@ async function mount(opts: MountOpts = {}): Promise<Harness> {
   const client = fakeClient();
   const scan = vi.fn(opts.scan ?? (async () => opts.snap ?? snapshot()));
   const sendText = vi.fn(async () => (opts.sendOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
+  const focusPane = vi.fn(async () => (opts.focusOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
   const copy = vi.fn(async () => (opts.copyOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
   let nextPane = 9;
   const openEditor = vi.fn(async () =>
@@ -79,12 +82,12 @@ async function mount(opts: MountOpts = {}): Promise<Harness> {
     client, viewer: opts.viewer ?? "nvim", scan,
     hasOpenspec: async () => opts.hasOpenspec ?? true,
     readArtifact: async (p) => { const c = files.get(p); if (c === undefined) throw new Error("ENOENT"); return c; },
-    sendText, openEditor, copy, onExit, viewerPane, height: opts.height ?? 20,
+    sendText, focusPane, openEditor, copy, onExit, viewerPane, height: opts.height ?? 20,
   };
   const r = render(<App {...deps} />);
   await tick();
   return {
-    deps, files, client, sendText, copy, openEditor, onExit, scan, viewerPane,
+    deps, files, client, sendText, focusPane, copy, openEditor, onExit, scan, viewerPane,
     frame: () => r.lastFrame() ?? "",
     press: async (s) => { r.stdin.write(s); await tick(); },
   };
@@ -345,12 +348,13 @@ describe("send a Spectra command", () => {
     ["i", "/spectra-ingest add-search"],
     ["r", "/spectra-archive add-search"],
     ["c", "/spectra-commit add-search"],
-  ])("key %s sends %s to the invoking pane and exits", async (key, text) => {
+  ])("key %s sends %s to the invoking pane and stays open", async (key, text) => {
     const h = await mount({ snap: three() });
     await h.press("j");
     await h.press(key);
     expect(h.sendText).toHaveBeenCalledWith(h.client, "p1", text);
-    expect(h.onExit).toHaveBeenCalledWith(0);
+    expect(h.onExit).not.toHaveBeenCalled();
+    expect(h.frame()).toContain(`Sent: ${text}`);
     expect(h.scan).toHaveBeenCalledTimes(1);
   });
 
@@ -360,7 +364,34 @@ describe("send a Spectra command", () => {
     await h.press("a");
     expect(h.sendText).toHaveBeenCalledWith(h.client, "w4:p1", "/spectra-apply add-search");
     expect(h.sendText.mock.calls.some((c) => c[1] === "w4:p1C")).toBe(false);
-    expect(h.onExit).toHaveBeenCalledWith(0);
+    expect(h.onExit).not.toHaveBeenCalled();
+  });
+
+  it("hands focus back to the pane on its left after a send", async () => {
+    const h = await mount({ snap: three(), paneId: "p7", commandPaneId: "p1" });
+    await h.press("j");
+    await h.press("a");
+    expect(h.focusPane).toHaveBeenCalledWith(h.client, { paneId: "p7" });
+    expect(h.frame()).toContain("Sent: /spectra-apply add-search");
+    expect(h.onExit).not.toHaveBeenCalled();
+  });
+
+  it("says so when the focus call fails", async () => {
+    const h = await mount({ snap: three(), paneId: "p7", commandPaneId: "p1", focusOk: false });
+    await h.press("j");
+    await h.press("a");
+    expect(h.frame()).toContain("Sent, but could not focus pane");
+    expect(h.copy).not.toHaveBeenCalled();
+    expect(h.onExit).not.toHaveBeenCalled();
+  });
+
+  it("says so when it has no pane of its own to focus from", async () => {
+    const h = await mount({ snap: three(), paneId: null, commandPaneId: "p1" });
+    await h.press("j");
+    await h.press("a");
+    expect(h.sendText).toHaveBeenCalledWith(h.client, "p1", "/spectra-apply add-search");
+    expect(h.focusPane).not.toHaveBeenCalled();
+    expect(h.frame()).toContain("Sent, but could not focus pane");
   });
 
   it("copies when the plugin has a pane of its own but no invoking pane", async () => {
@@ -382,6 +413,7 @@ describe("send a Spectra command", () => {
     const h = await mount({ snap: three(), paneId: null });
     await h.press("j"); await h.press("c");
     expect(h.sendText).not.toHaveBeenCalled();
+    expect(h.focusPane).not.toHaveBeenCalled();
     expect(h.copy).toHaveBeenCalledWith("/spectra-commit add-search");
     expect(h.onExit).not.toHaveBeenCalled();
     expect(h.frame()).toContain("Copied: /spectra-commit add-search");
@@ -391,6 +423,7 @@ describe("send a Spectra command", () => {
     const h = await mount({ snap: three(), sendOk: false });
     await h.press("j"); await h.press("d");
     expect(h.copy).toHaveBeenCalledWith("/spectra-discuss add-search");
+    expect(h.focusPane).not.toHaveBeenCalled();
     expect(h.onExit).not.toHaveBeenCalled();
     expect(h.frame()).toContain("Herdr send failed, copied instead");
   });

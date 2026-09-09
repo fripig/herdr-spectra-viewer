@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { runOpenAction, MISSING_BIN_MESSAGE } from "../../src/open.js";
 
 describe("open action", () => {
-  it("executes herdr plugin pane open with plugin id and entrypoint", async () => {
+  it("executes herdr plugin pane open as a right split", async () => {
     const calls: Array<[string, string[]]> = [];
     const code = await runOpenAction({
       env: { HERDR_BIN_PATH: "/usr/local/bin/herdr", HERDR_PLUGIN_ID: "spectra-viewer" },
@@ -12,7 +12,7 @@ describe("open action", () => {
     expect(code).toBe(0);
     expect(calls).toEqual([[
       "/usr/local/bin/herdr",
-      ["plugin", "pane", "open", "--plugin", "spectra-viewer", "--entrypoint", "changes"],
+      ["plugin", "pane", "open", "--plugin", "spectra-viewer", "--entrypoint", "changes", "--placement", "split", "--direction", "right"],
     ]]);
   });
 
