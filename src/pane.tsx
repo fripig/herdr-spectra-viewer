@@ -9,12 +9,45 @@ import { readInvocationContext } from "./herdr/context.js";
 import { createHerdrClient, focusPane, openInEditorSplit, sendTextToPane } from "./herdr/client.js";
 import { copyToClipboard } from "./herdr/clipboard.js";
 import { resolveProjectRoot } from "./herdr/project-root.js";
+import { paneGeometry, type PaneGeometry } from "./herdr/client.js";
 import { App, type AppDeps } from "./tui/App.js";
 import { MOUSE_DISABLE, MOUSE_ENABLE } from "./tui/mouse.js";
 
 /** Ink must render strictly fewer rows than the terminal has, or the frame scrolls off the top. */
 export function frameHeight(rows: number | undefined): number {
   return Math.max(8, (rows || 24) - 1);
+}
+
+/** Ink's own fallback when a terminal reports no width. */
+export function frameWidth(columns: number | undefined): number {
+  return columns && columns > 0 ? columns : 80;
+}
+
+/**
+ * Herdr's answer for the pane's size, when there is one to ask for. Without a
+ * pane id there is nothing to ask about, so no Herdr call is made at all.
+ */
+export function startupGeometry(
+  client: { run: (args: string[]) => Promise<{ stdout: string; exitCode: number }> },
+  paneId: string | null,
+): Promise<PaneGeometry | null> {
+  return paneId ? paneGeometry(client, paneId) : Promise.resolve(null);
+}
+
+/**
+ * The size the first frame is drawn at. Herdr knows the pane's real size from
+ * the moment it creates the pane; the pty does not, because Herdr leaves a
+ * freshly split plugin pane carrying its pre-split size until the pane's focus
+ * changes. So Herdr's answer wins, and the pty is the fallback.
+ */
+export function startupSize(
+  geometry: PaneGeometry | null,
+  stdout: { columns?: number; rows?: number },
+): { width: number; height: number } {
+  return {
+    width: frameWidth(geometry?.columns ?? stdout.columns),
+    height: frameHeight(geometry?.rows ?? stdout.rows),
+  };
 }
 
 export const DEFAULT_VIEWER = "less";
@@ -67,23 +100,28 @@ export function viewerLifecycle(close: (paneId: string) => void, ref: { current:
   };
 }
 
-function Sized(props: Omit<AppDeps, "height">) {
+function Sized({ initial, ...props }: Omit<AppDeps, "height" | "width"> & { initial: PaneGeometry | null }) {
   const { stdout } = useStdout();
-  const [height, setHeight] = useState(frameHeight(stdout.rows));
+  const [size, setSize] = useState(() => startupSize(initial, stdout));
   useEffect(() => {
-    const onResize = () => setHeight(frameHeight(stdout.rows));
+    // Every later size comes from the pty, which is right once Herdr has resized it.
+    const onResize = () => setSize(startupSize(null, stdout));
     stdout.on("resize", onResize);
     return () => {
       stdout.off("resize", onResize);
     };
   }, [stdout]);
-  return <App {...props} height={height} />;
+  return <App {...props} width={size.width} height={size.height} />;
 }
 
 async function main(): Promise<void> {
   const context = readInvocationContext(process.env, process.cwd());
   const client = createHerdrClient(context.herdrBin);
-  const projectRoot = await resolveProjectRoot(context, client);
+  // Independent lookups, both needed before the first frame.
+  const [projectRoot, geometry] = await Promise.all([
+    resolveProjectRoot(context, client),
+    startupGeometry(client, context.paneId),
+  ]);
   const viewer = resolveViewer(process.env);
 
   const mouse = mouseLifecycle((s) => process.stdout.write(s));
@@ -108,6 +146,7 @@ async function main(): Promise<void> {
 
   const app = render(
     <Sized
+      initial={geometry}
       projectRoot={projectRoot}
       context={context}
       client={client}

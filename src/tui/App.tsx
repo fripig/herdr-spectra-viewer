@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useInput, useStdout } from "ink";
+import { Box, Text, useInput } from "ink";
 import path from "node:path";
 import type { ScanSnapshot } from "../discovery/types.js";
 import type { AdapterResult, HerdrClient, ViewerResult } from "../herdr/client.js";
@@ -7,7 +7,7 @@ import type { InvocationContext } from "../herdr/context.js";
 import { AuthorPicker } from "./AuthorPicker.js";
 import { ChangeTree } from "./ChangeTree.js";
 import { FilterLine } from "./FilterLine.js";
-import { StatusBar } from "./StatusBar.js";
+import { StatusBar, hintLines } from "./StatusBar.js";
 import { AUTHOR_HINTS, FILTER_HINTS, commandForKey, commandText } from "./keymap.js";
 import { authorCandidates, filterSnapshot, type AuthorCandidate } from "./change-filter.js";
 import { compareChanges, nextSortMode, type SortMode } from "./change-order.js";
@@ -60,11 +60,18 @@ export interface AppDeps {
    */
   viewerPane: { current: string | null };
   onExit: (code: number) => void;
+  /** The pane's terminal size, resolved before the first frame. */
+  width: number;
   height: number;
 }
 
-/** Header line plus the four status-bar rows below the tree. */
-const RESERVED_ROWS = 5;
+/**
+ * The rows the tree never gets: the line the rescan notice occupies (always
+ * reserved, so a rescan does not resize the tree), the header line above it,
+ * and the status bar's message line. The key-hint lines are counted separately,
+ * because how many of them there are depends on the pane width.
+ */
+const FIXED_ROWS = 3;
 
 export function App(deps: AppDeps) {
   const [snapshot, setSnapshot] = useState<ScanSnapshot | null>(null);
@@ -86,8 +93,9 @@ export function App(deps: AppDeps) {
   const [pickerIndex, setPickerIndex] = useState(0);
   const exited = useRef(false);
   const viewerPane = deps.viewerPane;
-  const { stdout } = useStdout();
-  const treeHeight = Math.max(3, deps.height - RESERVED_ROWS);
+  const modalHints = mode === "filter" ? FILTER_HINTS : mode === "authors" ? AUTHOR_HINTS : null;
+  // The status bar grows as the pane narrows, so the tree is what is left over.
+  const treeHeight = Math.max(3, deps.height - FIXED_ROWS - hintLines(deps.width, modalHints).length);
 
   const runScan = useCallback(async () => {
     setScanning(true);
@@ -249,7 +257,7 @@ export function App(deps: AppDeps) {
     treeTop: (scanning && snapshot ? 1 : 0) + 1,
     treeHeight,
     treeLeft: 0,
-    treeWidth: stdout.columns || 80,
+    treeWidth: deps.width,
     windowStart: start,
     rowCount: rows.length,
   };
@@ -371,12 +379,10 @@ export function App(deps: AppDeps) {
       </Box>
     );
 
-  const modalHints = mode === "filter" ? FILTER_HINTS : mode === "authors" ? AUTHOR_HINTS : null;
-
   return (
     <Box flexDirection="column" height={deps.height}>
       <Box flexGrow={1}>{body}</Box>
-      <StatusBar message={message} skipped={skipped} modalHints={modalHints} />
+      <StatusBar message={message} skipped={skipped} width={deps.width} modalHints={modalHints} />
     </Box>
   );
 }

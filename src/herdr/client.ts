@@ -106,3 +106,78 @@ export async function paneCwd(client: HerdrClient, paneId: string): Promise<stri
   const r = await client.run(["pane", "get", paneId]);
   return r.exitCode === 0 ? extractPaneCwd(r.stdout) : null;
 }
+
+/** The terminal size the pane actually has, in pty columns and rows. */
+export interface PaneGeometry {
+  columns: number;
+  rows: number;
+}
+
+function positiveInt(v: unknown): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null;
+}
+
+interface LayoutPane {
+  pane_id?: unknown;
+  rect?: { width?: unknown; height?: unknown };
+}
+
+/** The rows Herdr draws around a pane, which its `rect` counts and the pty does not. */
+export const PANE_CHROME_ROWS = 2;
+
+/** The pane's own box in the layout: correct from the moment the pane exists. */
+export function extractPaneRect(stdout: string, paneId: string): { width: number; height: number } | null {
+  try {
+    const parsed = JSON.parse(stdout) as { result?: { layout?: { panes?: unknown } } };
+    const panes = parsed?.result?.layout?.panes;
+    if (!Array.isArray(panes)) return null;
+    const own = (panes as LayoutPane[]).find((p) => p?.pane_id === paneId);
+    if (!own) return null;
+    const width = positiveInt(own.rect?.width);
+    const height = positiveInt(own.rect?.height);
+    return width !== null && height !== null ? { width, height } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The pty's own row count. Herdr leaves a freshly created pane's pty carrying
+ * the pre-split size, so this is too large until the pane's focus changes.
+ */
+export function extractViewportRows(stdout: string): number | null {
+  try {
+    const parsed = JSON.parse(stdout) as { result?: { pane?: { scroll?: { viewport_rows?: unknown } } } };
+    return positiveInt(parsed?.result?.pane?.scroll?.viewport_rows);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Asks Herdr how big the pane is. Herdr gives a freshly split plugin pane a pty
+ * that still carries the pre-split size and does not resize it until the pane's
+ * focus changes, so the process's own view of its size is wrong for the whole
+ * first frame; the layout Herdr reports is right from the start.
+ *
+ * The height takes the smaller of the two numbers Herdr offers, because neither
+ * is reliable alone: the pty's row count is stale on a new pane, and the rect's
+ * height counts the pane's chrome as well. The smaller one is whichever is
+ * currently right, and if the chrome ever stops being two rows the frame comes
+ * out shorter than the pane rather than taller than it.
+ *
+ * Anything missing makes the whole answer null rather than half an answer,
+ * because a width from Herdr paired with a height from the stale pty describes
+ * no terminal that exists.
+ */
+export async function paneGeometry(client: HerdrClient, paneId: string): Promise<PaneGeometry | null> {
+  const [layout, info] = await Promise.all([
+    client.run(["pane", "layout", "--pane", paneId]),
+    client.run(["pane", "get", paneId]),
+  ]);
+  if (layout.exitCode !== 0 || info.exitCode !== 0) return null;
+  const rect = extractPaneRect(layout.stdout, paneId);
+  const viewportRows = extractViewportRows(info.stdout);
+  if (rect === null || viewportRows === null) return null;
+  return { columns: rect.width, rows: Math.min(viewportRows, rect.height - PANE_CHROME_ROWS) };
+}

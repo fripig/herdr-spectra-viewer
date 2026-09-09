@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sendTextToPane, focusPane, openInEditorSplit, createHerdrClient, shellQuote } from "../../src/herdr/client.js";
+import { sendTextToPane, focusPane, openInEditorSplit, createHerdrClient, paneGeometry, shellQuote } from "../../src/herdr/client.js";
 import { fakeClient } from "./fake-client.js";
 
 describe("sendTextToPane", () => {
@@ -136,5 +136,72 @@ describe("createHerdrClient", () => {
     const r = await createHerdrClient("/bin/echo").run(["a b", "$HOME"]);
     expect(r.exitCode).toBe(0);
     expect(r.stdout.trim()).toBe("a b $HOME");
+  });
+});
+
+describe("paneGeometry", () => {
+  const layout = (panes: Array<{ id: string; width: number; height: number }>) =>
+    JSON.stringify({ result: { layout: { panes: panes.map((p) => ({ pane_id: p.id, rect: { x: 0, y: 0, width: p.width, height: p.height } })) } } });
+  const info = (rows: unknown) => JSON.stringify({ result: { pane: { pane_id: "p7", scroll: { viewport_rows: rows } } } });
+  const both = (rect: { width: number; height: number }, rows: unknown) =>
+    fakeClient([{ stdout: layout([{ id: "p1", width: 78, height: 48 }, { id: "p7", ...rect }]) }, { stdout: info(rows) }]);
+
+  it("takes the width from the layout and asks Herdr about the right pane", async () => {
+    const c = both({ width: 39, height: 48 }, 46);
+    expect(await paneGeometry(c, "p7")).toEqual({ columns: 39, rows: 46 });
+    expect(c.calls).toEqual([["pane", "layout", "--pane", "p7"], ["pane", "get", "p7"]]);
+  });
+
+  it("ignores a stale viewport row count in favour of the rect, less the pane chrome", async () => {
+    // A pane Herdr has just created: the rect is already 24, the pty still says 48.
+    expect(await paneGeometry(both({ width: 77, height: 24 }, 48), "p7")).toEqual({ columns: 77, rows: 22 });
+  });
+
+  it("resolves the same height either way once the pane has settled", async () => {
+    expect(await paneGeometry(both({ width: 77, height: 24 }, 22), "p7")).toEqual({ columns: 77, rows: 22 });
+  });
+
+  it("prefers the viewport rows when they are smaller than the rect allows", async () => {
+    expect(await paneGeometry(both({ width: 77, height: 48 }, 20), "p7")).toEqual({ columns: 77, rows: 20 });
+  });
+
+  it("returns null when the pane id is absent from the layout", async () => {
+    const c = fakeClient([{ stdout: layout([{ id: "p1", width: 78, height: 48 }]) }, { stdout: info(46) }]);
+    expect(await paneGeometry(c, "p7")).toBeNull();
+  });
+
+  it("returns null when the layout call exits non-zero", async () => {
+    const c = fakeClient([{ exitCode: 2 }, { stdout: info(46) }]);
+    expect(await paneGeometry(c, "p7")).toBeNull();
+  });
+
+  it("returns null when the pane get call exits non-zero", async () => {
+    const c = fakeClient([{ stdout: layout([{ id: "p7", width: 39, height: 48 }]) }, { exitCode: 2 }]);
+    expect(await paneGeometry(c, "p7")).toBeNull();
+  });
+
+  it("returns null when either response is not JSON", async () => {
+    const c = fakeClient([{ stdout: "not json" }, { stdout: info(46) }]);
+    expect(await paneGeometry(c, "p7")).toBeNull();
+    const d = fakeClient([{ stdout: layout([{ id: "p7", width: 39, height: 48 }]) }, { stdout: "not json" }]);
+    expect(await paneGeometry(d, "p7")).toBeNull();
+  });
+
+  it("returns null when a rect field is missing or not a positive integer", async () => {
+    for (const rect of [{ width: 39 }, { height: 48 }, { width: 0, height: 48 }, { width: 39, height: -1 }, { width: "39", height: 48 }]) {
+      const stdout = JSON.stringify({ result: { layout: { panes: [{ pane_id: "p7", rect }] } } });
+      const c = fakeClient([{ stdout }, { stdout: info(46) }]);
+      expect(await paneGeometry(c, "p7")).toBeNull();
+    }
+  });
+
+  it("returns null when viewport_rows is missing or not a positive integer", async () => {
+    for (const rows of [undefined, 0, -1, 46.5, "46"]) {
+      expect(await paneGeometry(both({ width: 39, height: 48 }, rows), "p7")).toBeNull();
+    }
+  });
+
+  it("reports no geometry without spawning when there is no binary", async () => {
+    expect(await paneGeometry(createHerdrClient(null), "p7")).toBeNull();
   });
 });

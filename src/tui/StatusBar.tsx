@@ -1,29 +1,30 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { COMMAND_KEYS, VIEW_HINTS } from "./keymap.js";
+import { COMMAND_HINTS, VIEW_HINTS } from "./keymap.js";
+import { statusBarLines } from "./hint-layout.js";
 
 export interface StatusBarProps {
   message: string | null;
   skipped: number;
-  /** Replaces the two key lines while a modal input line owns the keyboard. */
-  modalHints?: string | null;
+  /** The pane width the hint lines are packed against. */
+  width: number;
+  /** Replaces the key lines while a modal input line owns the keyboard. */
+  modalHints?: readonly string[] | null;
 }
 
-export function StatusBar({ message, skipped, modalHints }: StatusBarProps) {
-  const commands = COMMAND_KEYS.map((c) => `${c.key} ${c.label}`).join("  ");
+/** The key-hint lines this bar draws at a given width, message line excluded. */
+export function hintLines(width: number, modalHints: readonly string[] | null): string[] {
+  return statusBarLines({ hints: VIEW_HINTS, commands: COMMAND_HINTS, modal: modalHints, width });
+}
+
+export function StatusBar({ message, skipped, width, modalHints }: StatusBarProps) {
+  const lines = hintLines(width, modalHints ?? null);
   return (
     <Box flexDirection="column">
-      {modalHints ? (
-        <>
-          <Text dimColor wrap="truncate-end">{modalHints}</Text>
-          <Text> </Text>
-        </>
-      ) : (
-        <>
-          <Text dimColor wrap="truncate-end">{VIEW_HINTS.join("  ")}</Text>
-          <Text dimColor wrap="truncate-end">send to pane: {commands}</Text>
-        </>
-      )}
+      {lines.map((line, i) => (
+        // The index is the identity here: these lines have no other one.
+        <Text key={i} dimColor>{line === "" ? " " : line}</Text>
+      ))}
       <Text wrap="truncate-end">
         {message ?? ""}
         {skipped > 0 ? (message ? "  " : "") + `${skipped} change(s) skipped` : ""}

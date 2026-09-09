@@ -19,8 +19,11 @@ export const VIEW_HINTS: readonly string[] = [
 ];
 
 /** What the two modal input lines accept, shown while they are open. */
-export const FILTER_HINTS = "type to filter  ⌫ delete  ⏎ keep  Esc clear";
-export const AUTHOR_HINTS = "↑↓/jk move  space toggle  ⏎/Esc close";
+export const FILTER_HINTS: readonly string[] = ["type to filter", "⌫ delete", "⏎ keep", "Esc clear"];
+export const AUTHOR_HINTS: readonly string[] = ["↑↓/jk move", "space toggle", "⏎/Esc close"];
+
+/** The command-key line, led by the label that says where the text goes. */
+export const COMMAND_HINTS: readonly string[] = ["send to pane:", ...COMMAND_KEYS.map((c) => `${c.key} ${c.label}`)];
 
 export function commandForKey(key: string): CommandKey | undefined {
   return COMMAND_KEYS.find((c) => c.key === key);

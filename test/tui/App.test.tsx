@@ -4,6 +4,7 @@ import { render } from "ink-testing-library";
 import { App, NOT_INITIALISED, NO_AUTHORS, SCANNING, SELECT_CHANGE_FIRST, type AppDeps } from "../../src/tui/App.js";
 import type { ScanSnapshot, SpectraChange } from "../../src/discovery/types.js";
 import { fakeClient } from "../herdr/fake-client.js";
+import { COMMAND_HINTS, VIEW_HINTS } from "../../src/tui/keymap.js";
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // Two macrotasks: one for the render, one for React to flush the passive effects
@@ -37,6 +38,7 @@ interface MountOpts {
   commandPaneId?: string | null;
   focusOk?: boolean;
   hasOpenspec?: boolean;
+  width?: number;
   height?: number;
   scan?: AppDeps["scan"];
   sendOk?: boolean;
@@ -87,7 +89,8 @@ async function mount(opts: MountOpts = {}): Promise<Harness> {
     client, viewer: opts.viewer ?? "nvim", scan,
     hasOpenspec: async () => opts.hasOpenspec ?? true,
     readArtifact: async (p) => { const c = files.get(p); if (c === undefined) throw new Error("ENOENT"); return c; },
-    sendText, focusPane, openEditor, copy, onExit, viewerPane, height: opts.height ?? 20,
+    sendText, focusPane, openEditor, copy, onExit, viewerPane,
+    width: opts.width ?? 80, height: opts.height ?? 20,
   };
   const r = render(<App {...deps} />);
   await settle();
@@ -536,7 +539,8 @@ describe("mouse", () => {
       if (first) { first = false; return Promise.resolve(many); }
       return new Promise<ScanSnapshot>((r) => { resolve = r; });
     };
-    const h = await mount({ scan, height: 10 }); // treeHeight 6
+    // Wide enough that the key hints stay on one line each, so treeHeight is 5.
+    const h = await mount({ scan, height: 10, width: 120 });
     for (let i = 0; i < 10; i++) await h.press("j"); // cursor 10, window starts at 5
     await h.press("R"); // "Scanning…" now occupies the row above the tree
     expect(h.frame().split("\n")[0]).toContain(SCANNING);
@@ -880,5 +884,63 @@ describe("keys arriving faster than a render", () => {
     const h = await mount({ snap: filterable() });
     await h.pressFast("s", "s");
     expect(h.frame()).toContain("sort: created");
+  });
+});
+
+describe("key hints fit the pane width", () => {
+  const hasLine = (frame: string, text: string) => frame.split("\n").some((l) => l.trim() === text);
+
+  it("keeps every hint on one line when the pane is wide enough", async () => {
+    const h = await mount({ width: 120 });
+    expect(hasLine(h.frame(), VIEW_HINTS.join("  "))).toBe(true);
+    expect(hasLine(h.frame(), COMMAND_HINTS.join("  "))).toBe(true);
+  });
+
+  it("wraps rather than truncates, so the last hint of each group stays visible", async () => {
+    const h = await mount({ width: 40 });
+    const f = h.frame();
+    expect(hasLine(f, VIEW_HINTS.join("  "))).toBe(false);
+    expect(f).toContain("q quit");
+    expect(f).toContain("c commit");
+    expect(f).not.toContain("\u2026");
+  });
+
+  it("still shows every hint at a width that fits only one per line", async () => {
+    const h = await mount({ width: 10, height: 40 });
+    const f = h.frame();
+    for (const hint of [...VIEW_HINTS, ...COMMAND_HINTS]) expect(f).toContain(hint);
+  });
+
+  it("shows the modal hints in place of the key lines while filtering", async () => {
+    const h = await mount({ width: 40 });
+    await h.press("/");
+    const f = h.frame();
+    expect(f).toContain("Esc clear");
+    expect(f).not.toContain("q quit");
+  });
+});
+
+describe("the frame fits the pane whatever the width", () => {
+  const rowsOf = (frame: string) => frame.split("\n").length;
+
+  it.each([120, 60, 40, 20, 10])("renders exactly the pane height at width %i", async (width) => {
+    const h = await mount({ width, height: 24, snap: three() });
+    expect(rowsOf(h.frame())).toBe(24);
+  });
+
+  it("gives the tree fewer rows as the hints take more", async () => {
+    const many = snapshot({ active: Array.from({ length: 30 }, (_, i) => change(`chg-${String(i).padStart(2, "0")}`, "active")) });
+    const shown = (frame: string) => frame.split("\n").filter((l) => /chg-\d\d/.test(l)).length;
+    const wide = await mount({ width: 120, height: 24, snap: many });
+    const narrow = await mount({ width: 20, height: 24, snap: many });
+    expect(shown(narrow.frame())).toBeLessThan(shown(wide.frame()));
+    expect(rowsOf(narrow.frame())).toBe(rowsOf(wide.frame()));
+  });
+
+  it("keeps the frame height when a modal input line opens", async () => {
+    const h = await mount({ width: 40, height: 24, snap: three() });
+    const before = rowsOf(h.frame());
+    await h.press("/");
+    expect(rowsOf(h.frame())).toBe(before);
   });
 });
