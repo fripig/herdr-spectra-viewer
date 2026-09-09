@@ -9,12 +9,19 @@ one-key sending of `/spectra-*` commands to the pane that opened it.
 Requires Node.js 20 or newer and Herdr 0.9.0 or newer.
 
 ```sh
-git clone https://github.com/fripig/herdr-spectra-viewer ~/.herdr/plugins/spectra-viewer
-herdr plugin link ~/.herdr/plugins/spectra-viewer
+herdr plugin install fripig/herdr-spectra-viewer
 ```
 
-Herdr runs `npm ci` and `npm run build` from the manifest's build steps. Open the pane with the
-`spectra-viewer: open` action, or run `node dist/pane.js` inside a Herdr pane.
+Herdr clones the repository and runs `npm ci` and `npm run build` from the manifest's build steps.
+Open the pane with the `spectra-viewer: open` action, or run `node dist/pane.js` inside a Herdr
+pane.
+
+To work on the plugin itself, link a clone instead of installing it:
+
+```sh
+git clone https://github.com/fripig/herdr-spectra-viewer
+herdr plugin link herdr-spectra-viewer
+```
 
 The action opens the pane as a split to the right of the pane you were working in, so the tree sits
 beside your work rather than over it. The placement is asked for by the action itself, not by the
