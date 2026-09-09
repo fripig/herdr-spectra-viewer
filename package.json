@@ -1,7 +1,7 @@
 {
   "name": "herdr-spectra-viewer",
   "version": "0.1.0",
-  "description": "Herdr plugin that lists Spectra changes in an overlay pane",
+  "description": "Browse Spectra changes, preview artifacts, and hand /spectra-* commands to your working pane.",
   "type": "module",
   "private": true,
   "engines": {
