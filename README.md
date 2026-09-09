@@ -77,6 +77,29 @@ disappear, with nothing to close by hand. That also means a viewer that fails on
 own error message with it; if a viewer misbehaves, point `SPECTRA_VIEWER` at a command that pauses
 so the output stays on screen.
 
+### Choosing a markdown reader
+
+The pane runs the viewer as `<SPECTRA_VIEWER> <path>; exit` in a shell, so a command qualifies when
+it takes the file as its last argument and stays on screen until the reader quits. A renderer that
+prints and returns makes the pane vanish before anything can be read; most of them have a paging
+flag for exactly this. The path is appended rather than substituted, so a pipeline needs a wrapper
+script on `PATH` rather than a `SPECTRA_VIEWER` value.
+
+Readers that fit the contract above. The plugin depends on none of them, and installs none of them:
+
+| Command | What it gives you |
+| --- | --- |
+| `less` | The default. Raw markdown, nothing to install. |
+| `bat --style=plain` | Raw markdown with syntax highlighting; pages on its own. |
+| `glow -p` | Rendered markdown with margins and wrapped paragraphs, from one static binary. |
+| `mdcat -p` | Rendered markdown, plus inline images on terminals that support them. |
+| `mdless` | Rendered markdown, written as a pager from the start. |
+| `frogmouth` | A full markdown browser in the pane, with navigation of its own. |
+
+Rendering costs nothing on these files: the delta headings and the `**WHEN**` / `**THEN**` scenario
+lines stay legible either way, and a long `SHALL` paragraph wraps far better in a narrow split than
+it does in `less`.
+
 Closing the changes pane takes the viewer pane with it: quitting with `q`, or letting the pane close
 itself after it hands a command over, closes the viewer that is still open. When Herdr closes the
 pane from the outside the plugin has only a moment to react, so that case is best-effort — a viewer
