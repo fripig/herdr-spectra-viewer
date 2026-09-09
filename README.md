@@ -91,14 +91,19 @@ Readers that fit the contract above. The plugin depends on none of them, and ins
 | --- | --- |
 | `less` | The default. Raw markdown, nothing to install. |
 | `bat --style=plain` | Raw markdown with syntax highlighting; pages on its own. |
-| `glow -p` | Rendered markdown with margins and wrapped paragraphs, from one static binary. |
+| `glow -p` | Rendered markdown with margins and word-wrapped paragraphs, from one static binary. |
 | `mdcat -p` | Rendered markdown, plus inline images on terminals that support them. |
 | `mdless` | Rendered markdown, written as a pager from the start. |
 | `frogmouth` | A full markdown browser in the pane, with navigation of its own. |
 
-Rendering costs nothing on these files: the delta headings and the `**WHEN**` / `**THEN**` scenario
-lines stay legible either way, and a long `SHALL` paragraph wraps far better in a narrow split than
-it does in `less`.
+A renderer picks its own wrapping width, which need not be the width of the split — glow 3.0.0 wraps
+at 80 columns whatever the pane is. Overflow costs legibility and nothing else: the pane still holds
+until the reader quits, and still closes itself when it does. Adjust it with the reader's own width
+flag, which reaches it through the shell either way: `glow -p -w 74`, or `glow -p -w $(tput cols)`.
+
+Rendering earns its keep on these files: `less` hard-wraps a long `SHALL` paragraph mid-word, while a
+renderer breaks it on spaces and indents it under its heading. The delta headings and the `**WHEN**`
+/ `**THEN**` scenario lines stay legible either way.
 
 Closing the changes pane takes the viewer pane with it: quitting with `q`, or letting the pane close
 itself after it hands a command over, closes the viewer that is still open. When Herdr closes the
