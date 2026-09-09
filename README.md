@@ -99,8 +99,10 @@ split. The plugin depends on none of them, and installs none of them:
 
 The pane closes when the reader exits, so the reader's own quit key is the key that closes the split.
 That is `q` for everything above except `frogmouth`, which is a Textual application: `q` and `Escape`
-both leave it running, and only `Ctrl+Q` ends it. A reader whose quit key you do not know leaves a
-pane you have to close with `herdr pane close`.
+both leave it running, and only `Ctrl+Q` ends it. Not knowing the key costs less than it sounds,
+because the plugin closes the pane itself either way — opening the next artifact replaces it, and
+leaving the changes pane takes it along — so the only thing a wrong key costs is a split that stays
+on screen until one of those happens.
 
 A renderer also picks its own wrapping width, which need not be the width of the split. `mdcat` and
 `frogmouth` take the pane's width; glow 3.0.0 wraps at 80 whatever the pane is, so in a narrower
