@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Box, Text, useInput, useStdout } from "ink";
 import path from "node:path";
 import type { ScanSnapshot } from "../discovery/types.js";
-import type { AdapterResult, HerdrClient } from "../herdr/client.js";
+import type { AdapterResult, HerdrClient, ViewerResult } from "../herdr/client.js";
 import type { InvocationContext } from "../herdr/context.js";
 import { ChangeTree } from "./ChangeTree.js";
 import { StatusBar } from "./StatusBar.js";
@@ -25,8 +25,8 @@ export interface AppDeps {
   sendText: (client: HerdrClient, paneId: string, text: string) => Promise<AdapterResult>;
   openEditor: (
     client: HerdrClient,
-    opts: { projectRoot: string; paneId: string | null; viewer: string; filePath: string },
-  ) => Promise<AdapterResult>;
+    opts: { projectRoot: string; paneId: string | null; viewer: string; filePath: string; previousViewerPane: string | null },
+  ) => Promise<ViewerResult>;
   copy: (text: string) => Promise<AdapterResult>;
   onExit: (code: number) => void;
   height: number;
@@ -43,6 +43,10 @@ export function App(deps: AppDeps) {
   const [message, setMessage] = useState<string | null>(null);
   const [start, setStart] = useState(0);
   const exited = useRef(false);
+  // The viewer pane created by the last open; closed before the next one so at
+  // most one is ever on screen. A pane that closed itself leaves a stale id,
+  // which the next close tolerates.
+  const viewerPane = useRef<string | null>(null);
   const { stdout } = useStdout();
 
   const treeHeight = Math.max(3, deps.height - RESERVED_ROWS);
@@ -113,7 +117,9 @@ export function App(deps: AppDeps) {
     }
     const r = await deps.openEditor(deps.client, {
       projectRoot: deps.projectRoot, paneId: deps.context.paneId, viewer: deps.viewer, filePath: file,
+      previousViewerPane: viewerPane.current,
     });
+    viewerPane.current = r.ok ? r.paneId : (r.paneId ?? null);
     setMessage(r.ok ? `Opened in ${deps.viewer}` : "Could not open viewer");
   };
 

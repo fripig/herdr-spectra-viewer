@@ -59,7 +59,10 @@ async function mount(opts: MountOpts = {}): Promise<Harness> {
   const scan = vi.fn(opts.scan ?? (async () => opts.snap ?? snapshot()));
   const sendText = vi.fn(async () => (opts.sendOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
   const copy = vi.fn(async () => (opts.copyOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
-  const openEditor = vi.fn(async () => (opts.viewerOk === false ? { ok: false as const, reason: "x" } : { ok: true as const }));
+  let nextPane = 9;
+  const openEditor = vi.fn(async () =>
+    opts.viewerOk === false ? { ok: false as const, reason: "x" } : { ok: true as const, paneId: `p${nextPane++}` },
+  );
   const onExit = vi.fn();
   const deps: AppDeps = {
     projectRoot: "/repo",
@@ -183,6 +186,7 @@ describe("Enter", () => {
     await h.press(ENTER);
     expect(h.openEditor).toHaveBeenCalledWith(h.client, {
       projectRoot: "/repo", paneId: "p1", viewer: "nvim", filePath: "/repo/changes/add-search/design.md",
+      previousViewerPane: null,
     });
     expect(h.frame()).toContain("Opened in nvim");
   });
@@ -218,6 +222,7 @@ describe("open in viewer", () => {
     await h.press("e");
     expect(h.openEditor).toHaveBeenCalledWith(h.client, {
       projectRoot: "/repo", paneId: "p1", viewer: "nvim", filePath: "/repo/changes/add-search/proposal.md",
+      previousViewerPane: null,
     });
     expect(h.frame()).toContain("Opened in nvim");
   });
@@ -233,6 +238,37 @@ describe("open in viewer", () => {
     await h.press("e");
     expect(h.onExit).not.toHaveBeenCalled();
     expect(h.frame()).toMatch(/> .*proposal\.md/);
+  });
+
+  it("passes no previous pane on the first open and the created one on the next", async () => {
+    const h = await onArtifact();
+    await h.press("e");
+    expect(h.openEditor.mock.calls[0][1]).toMatchObject({ previousViewerPane: null });
+    await h.press("e");
+    expect(h.openEditor.mock.calls[1][1]).toMatchObject({ previousViewerPane: "p9" });
+    await h.press("e");
+    expect(h.openEditor.mock.calls[2][1]).toMatchObject({ previousViewerPane: "p10" });
+  });
+
+  it("a missing file closes nothing and keeps the remembered pane", async () => {
+    const h = await onArtifact();
+    await h.press("e");
+    expect(h.openEditor.mock.calls[0][1]).toMatchObject({ previousViewerPane: null });
+    await h.press("k");
+    expect(h.frame()).toMatch(/> .*design\.md/);
+    await h.press("e");
+    expect(h.frame()).toContain("File not found: design.md");
+    expect(h.openEditor).toHaveBeenCalledTimes(1);
+    await h.press("j");
+    await h.press("e");
+    expect(h.openEditor.mock.calls[1][1]).toMatchObject({ previousViewerPane: "p9" });
+  });
+
+  it("remembers no pane after an open whose split failed", async () => {
+    const h = await onArtifact({ viewerOk: false });
+    await h.press("e");
+    await h.press("e");
+    expect(h.openEditor.mock.calls[1][1]).toMatchObject({ previousViewerPane: null });
   });
 
   it("reports adapter failure", async () => {
@@ -395,6 +431,7 @@ describe("mouse", () => {
     expect(h.frame()).toMatch(/> .*design\.md/);
     expect(h.openEditor).toHaveBeenCalledWith(h.client, {
       projectRoot: "/repo", paneId: "p1", viewer: "nvim", filePath: "/repo/changes/add-search/design.md",
+      previousViewerPane: null,
     });
     expect(h.frame()).toContain("Opened in nvim");
   });

@@ -11,6 +11,13 @@ export interface HerdrClient {
 
 export type AdapterResult = { ok: true } | { ok: false; reason: string };
 
+/**
+ * An open reports the pane it created, so the caller can close it next time.
+ * A run that fails still leaves its pane on screen, so the failure carries the
+ * id too; a split that never produced one carries nothing.
+ */
+export type ViewerResult = { ok: true; paneId: string } | { ok: false; reason: string; paneId?: string };
+
 /** Production client: spawns the Herdr binary directly, never through a shell. */
 export function createHerdrClient(bin: string | null): HerdrClient {
   return {
@@ -62,11 +69,18 @@ export function extractPaneCwd(stdout: string): string | null {
  * the pane's shell dies with the viewer and Herdr reclaims the pane; the
  * separator is `;` rather than `&&` so a failing viewer leaves nothing behind
  * either.
+ *
+ * `previousViewerPane` is closed first, so only one viewer pane is ever on
+ * screen. Closing is best-effort: Herdr exits zero for a pane that is already
+ * gone, so the result carries no signal worth acting on. Closing before the
+ * split also keeps the new pane in the layout the user had before the old one
+ * appeared.
  */
 export async function openInEditorSplit(
   client: HerdrClient,
-  opts: { projectRoot: string; paneId: string | null; viewer: string; filePath: string },
-): Promise<AdapterResult> {
+  opts: { projectRoot: string; paneId: string | null; viewer: string; filePath: string; previousViewerPane: string | null },
+): Promise<ViewerResult> {
+  if (opts.previousViewerPane) await client.run(["pane", "close", opts.previousViewerPane]);
   const splitArgs = ["pane", "split"];
   if (opts.paneId) splitArgs.push("--pane", opts.paneId);
   splitArgs.push("--direction", "right", "--cwd", opts.projectRoot);
@@ -75,7 +89,7 @@ export async function openInEditorSplit(
   const newPane = extractPaneId(split.stdout);
   if (!newPane) return { ok: false, reason: "pane split output has no pane id" };
   const run = await client.run(["pane", "run", newPane, `${opts.viewer} ${shellQuote(opts.filePath)}; exit`]);
-  return run.exitCode === 0 ? { ok: true } : { ok: false, reason: `pane run exited ${run.exitCode}` };
+  return run.exitCode === 0 ? { ok: true, paneId: newPane } : { ok: false, reason: `pane run exited ${run.exitCode}`, paneId: newPane };
 }
 
 export async function paneCwd(client: HerdrClient, paneId: string): Promise<string | null> {

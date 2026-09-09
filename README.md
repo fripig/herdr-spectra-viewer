@@ -50,4 +50,8 @@ disappear, with nothing to close by hand. That also means a viewer that fails on
 own error message with it; if a viewer misbehaves, point `SPECTRA_VIEWER` at a command that pauses
 so the output stays on screen.
 
+Only one viewer pane is ever on screen. Opening a second artifact without quitting the first viewer
+replaces that pane instead of stacking a new one beside it, so browsing a handful of artifacts in a
+row leaves nothing to tidy up.
+
 `EDITOR` is **not** consulted. If you relied on it before, set `SPECTRA_VIEWER` to the same value.
