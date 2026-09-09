@@ -28,6 +28,14 @@ export interface AppDeps {
     opts: { projectRoot: string; paneId: string | null; viewer: string; filePath: string; previousViewerPane: string | null },
   ) => Promise<ViewerResult>;
   copy: (text: string) => Promise<AdapterResult>;
+  /**
+   * The viewer pane created by the last open; closed before the next one so at
+   * most one is ever on screen, and closed again by the exit paths so none
+   * outlives this pane. A pane that closed itself leaves a stale id, which
+   * every close tolerates. The entry point owns it because the exit paths live
+   * outside the component.
+   */
+  viewerPane: { current: string | null };
   onExit: (code: number) => void;
   height: number;
 }
@@ -43,10 +51,7 @@ export function App(deps: AppDeps) {
   const [message, setMessage] = useState<string | null>(null);
   const [start, setStart] = useState(0);
   const exited = useRef(false);
-  // The viewer pane created by the last open; closed before the next one so at
-  // most one is ever on screen. A pane that closed itself leaves a stale id,
-  // which the next close tolerates.
-  const viewerPane = useRef<string | null>(null);
+  const viewerPane = deps.viewerPane;
   const { stdout } = useStdout();
 
   const treeHeight = Math.max(3, deps.height - RESERVED_ROWS);

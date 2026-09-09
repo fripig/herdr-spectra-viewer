@@ -52,6 +52,7 @@ interface Harness {
   openEditor: ReturnType<typeof vi.fn>;
   onExit: ReturnType<typeof vi.fn>;
   scan: ReturnType<typeof vi.fn>;
+  viewerPane: { current: string | null };
 }
 
 async function mount(opts: MountOpts = {}): Promise<Harness> {
@@ -65,6 +66,7 @@ async function mount(opts: MountOpts = {}): Promise<Harness> {
     opts.viewerOk === false ? { ok: false as const, reason: "x" } : { ok: true as const, paneId: `p${nextPane++}` },
   );
   const onExit = vi.fn();
+  const viewerPane: { current: string | null } = { current: null };
   const ownPane = opts.paneId === undefined ? "p1" : opts.paneId;
   const deps: AppDeps = {
     projectRoot: "/repo",
@@ -77,12 +79,12 @@ async function mount(opts: MountOpts = {}): Promise<Harness> {
     client, viewer: opts.viewer ?? "nvim", scan,
     hasOpenspec: async () => opts.hasOpenspec ?? true,
     readArtifact: async (p) => { const c = files.get(p); if (c === undefined) throw new Error("ENOENT"); return c; },
-    sendText, openEditor, copy, onExit, height: opts.height ?? 20,
+    sendText, openEditor, copy, onExit, viewerPane, height: opts.height ?? 20,
   };
   const r = render(<App {...deps} />);
   await tick();
   return {
-    deps, files, client, sendText, copy, openEditor, onExit, scan,
+    deps, files, client, sendText, copy, openEditor, onExit, scan, viewerPane,
     frame: () => r.lastFrame() ?? "",
     press: async (s) => { r.stdin.write(s); await tick(); },
   };
@@ -223,6 +225,16 @@ describe("open in viewer", () => {
     expect(h.frame()).toMatch(/> .*proposal\.md/);
     return h;
   }
+
+  it("remembers the pane a successful open created", async () => {
+    const h = await onArtifact();
+    expect(h.viewerPane.current).toBeNull();
+    await h.press("e");
+    expect(h.viewerPane.current).toBe("p9");
+    await h.press("e");
+    expect(h.openEditor).toHaveBeenLastCalledWith(h.client, expect.objectContaining({ previousViewerPane: "p9" }));
+    expect(h.viewerPane.current).toBe("p10");
+  });
 
   it("asks the adapter to open the file in the viewer", async () => {
     const h = await onArtifact();

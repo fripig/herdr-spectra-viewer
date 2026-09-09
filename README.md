@@ -61,6 +61,11 @@ disappear, with nothing to close by hand. That also means a viewer that fails on
 own error message with it; if a viewer misbehaves, point `SPECTRA_VIEWER` at a command that pauses
 so the output stays on screen.
 
+Closing the changes pane takes the viewer pane with it: quitting with `q`, or letting the pane close
+itself after it hands a command over, closes the viewer that is still open. When Herdr closes the
+pane from the outside the plugin has only a moment to react, so that case is best-effort — a viewer
+pane left behind there can be closed by quitting its viewer as usual.
+
 Only one viewer pane is ever on screen. Opening a second artifact without quitting the first viewer
 replaces that pane instead of stacking a new one beside it, so browsing a handful of artifacts in a
 row leaves nothing to tidy up.

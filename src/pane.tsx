@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { render, useStdout } from "ink";
+import { execFileSync } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -17,6 +18,9 @@ export function frameHeight(rows: number | undefined): number {
 }
 
 export const DEFAULT_VIEWER = "less";
+
+/** 128 + the signal number, as a shell reports it. */
+export const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } as const;
 
 /**
  * The command that shows an artifact. `EDITOR` is deliberately not consulted:
@@ -37,6 +41,29 @@ export function mouseLifecycle(write: (s: string) => void) {
   return {
     start: () => write(MOUSE_ENABLE),
     shutdown: () => write(MOUSE_DISABLE),
+  };
+}
+
+/**
+ * Closes the viewer pane the plugin opened, once, on the way out. The close is
+ * synchronous because `process.on("exit")` runs no async work and a pane closed
+ * by Herdr leaves the process only a signal handler's worth of time. Clearing
+ * the id keeps a second exit path from closing twice, and a close that fails —
+ * a pane that has already gone, a Herdr that will not run — is nothing the exit
+ * path can act on, so it is swallowed.
+ */
+export function viewerLifecycle(close: (paneId: string) => void, ref: { current: string | null }) {
+  return {
+    shutdown: () => {
+      const paneId = ref.current;
+      if (!paneId) return;
+      ref.current = null;
+      try {
+        close(paneId);
+      } catch {
+        // The process is ending; there is nowhere to report this.
+      }
+    },
   };
 }
 
@@ -61,11 +88,21 @@ async function main(): Promise<void> {
 
   const mouse = mouseLifecycle((s) => process.stdout.write(s));
   mouse.start();
-  process.on("exit", mouse.shutdown);
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  const viewerPane: { current: string | null } = { current: null };
+  const viewerExit = viewerLifecycle((paneId) => {
+    if (!context.herdrBin) return;
+    execFileSync(context.herdrBin, ["pane", "close", paneId], { timeout: 1000, stdio: "ignore" });
+  }, viewerPane);
+  // Both hooks run on every exit path, including the ones process.exit takes.
+  process.on("exit", () => {
+    mouse.shutdown();
+    viewerExit.shutdown();
+  });
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     process.on(signal, () => {
       mouse.shutdown();
-      process.exit(signal === "SIGINT" ? 130 : 143);
+      viewerExit.shutdown();
+      process.exit(SIGNAL_EXIT_CODES[signal]);
     });
   }
 
@@ -87,6 +124,7 @@ async function main(): Promise<void> {
       sendText={sendTextToPane}
       openEditor={openInEditorSplit}
       copy={(text) => copyToClipboard(text)}
+      viewerPane={viewerPane}
       onExit={(code) => {
         app.unmount();
         mouse.shutdown();
