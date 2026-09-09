@@ -237,6 +237,10 @@ The plugin's configuration file SHALL be `config.json` in the directory named by
 
 At most one viewer pane SHALL exist at a time. The plugin SHALL remember the pane id of the viewer pane it most recently created. When a viewer pane is remembered, an open SHALL ask Herdr to close that pane before splitting the new one, so the call order is close, then split, then run. The outcome of that close SHALL be ignored, including the not-found error a pane that has already gone reports, and SHALL NOT reach the status bar or prevent the split. When no viewer pane is remembered, an open SHALL NOT issue a close. A successful open SHALL remember the pane it created. An open whose split fails SHALL remember no pane. The remembered pane id SHALL NOT be probed for liveness before it is closed.
 
+An open that closes a remembered viewer pane SHALL ask Herdr for the layout holding the plugin's own pane, and SHALL ask before issuing the close, so the call order is layout, close, split, run. That split SHALL then be given a ratio: the width the plugin's own pane had, divided by the combined width of the plugin's own pane and the remembered viewer pane, expressed to four decimal places. The two panes therefore keep the widths the user last gave them. The ratio SHALL be derived from the two panes' own rectangles, not from any ratio the layout reports for a split of its own.
+
+No layout SHALL be asked for, and no ratio SHALL be given, when no viewer pane is remembered or when the plugin does not know its own pane id. A ratio SHALL also be withheld when the layout cannot be read, when either pane is absent from it, when either pane's width is not a positive integer, or when the two panes are not side by side, meaning their tops or their heights differ or the remembered viewer pane does not begin exactly where the plugin's own pane ends. A withheld ratio SHALL leave the split's width to Herdr, and SHALL NOT prevent the open, reach the status bar, or be reported anywhere.
+
 The status bar SHALL show `Opened in <viewer command>` on success. The plugin pane SHALL stay open afterwards. When the file does not exist, the status bar SHALL show `File not found: <relative path>`, no split SHALL be created, and no pane SHALL be closed. When the adapter reports a failure, the status bar SHALL show `Could not open viewer` and nothing else SHALL change. Pressing `e` on a group or change node SHALL do nothing.
 
 #### Scenario: Open an artifact in the viewer split
@@ -309,6 +313,41 @@ The status bar SHALL show `Opened in <viewer command>` on success. The plugin pa
 | `viewer` field is whitespace only | no                   | yes              |
 | `viewer` field is `frogmouth`     | yes                  | no               |
 
+#### Scenario: A second open keeps the widths the user set
+
+- **GIVEN** an earlier open created viewer pane `p9`, and the layout reports the plugin's own pane 27 columns wide with `p9` 50 columns wide beginning exactly where it ends
+- **WHEN** the user presses `e` on another artifact node
+- **THEN** the adapter asks for the layout, closes `p9`, splits with a ratio of `0.3506`, and runs the viewer, so the two panes are 27 and 50 columns wide again
+
+#### Scenario: The first open asks for no layout and sets no ratio
+
+- **GIVEN** no artifact has been opened since the pane started
+- **WHEN** the user presses `e` on an artifact node
+- **THEN** no layout is asked for, the split carries no ratio, and the split and the run are issued as they are today
+
+#### Scenario: A layout that cannot be read leaves the width to Herdr
+
+- **GIVEN** an earlier open created viewer pane `p9` and Herdr reports no usable layout
+- **WHEN** the user presses `e` on another artifact node
+- **THEN** the split carries no ratio, nothing is reported, and the open succeeds as usual
+
+#### Scenario: Panes that are not side by side leave the width to Herdr
+
+- **GIVEN** an earlier open created viewer pane `p9`, and the layout reports `p9` beginning somewhere other than where the plugin's own pane ends
+- **WHEN** the user presses `e` on another artifact node
+- **THEN** the split carries no ratio and the open succeeds as usual
+
+##### Example: ratio sent with the split
+
+| open | remembered pane, as the layout reports it | plugin pane width | viewer pane width | ratio sent |
+| ---- | ----------------------------------------- | ----------------- | ----------------- | ---------- |
+| 1st  | none                                      | —                 | —                 | none       |
+| 2nd  | side by side                              | 27                | 50                | `0.3506`   |
+| 2nd  | side by side                              | 39                | 38                | `0.5065`   |
+| 2nd  | absent from the layout                    | —                 | —                 | none       |
+| 2nd  | not side by side                          | 27                | 50                | none       |
+| 2nd  | width reported as zero                    | 27                | 0                 | none       |
+
 #### Scenario: The first open closes nothing
 
 - **GIVEN** no artifact has been opened since the pane started
@@ -319,15 +358,15 @@ The status bar SHALL show `Opened in <viewer command>` on success. The plugin pa
 
 - **GIVEN** an earlier open created viewer pane `p9` and its viewer is still running
 - **WHEN** the user presses `e` on another artifact node
-- **THEN** the adapter closes `p9`, then splits a new pane, then runs the viewer in it, and the status bar shows `Opened in <viewer command>`
+- **THEN** the adapter asks for the layout, then closes `p9`, then splits a new pane, then runs the viewer in it, and the status bar shows `Opened in <viewer command>`
 
 ##### Example: Herdr calls per open
 
-| open | remembered pane before | calls issued, in order | remembered pane after |
-| ---- | ---------------------- | ---------------------- | --------------------- |
-| 1st  | none                   | split, run             | `p9`                  |
-| 2nd  | `p9`                   | close `p9`, split, run | `p10`                 |
-| 3rd  | `p10`                  | close `p10`, split, run | `p11`                |
+| open | remembered pane before | calls issued, in order         | remembered pane after |
+| ---- | ---------------------- | ------------------------------ | --------------------- |
+| 1st  | none                   | split, run                     | `p9`                  |
+| 2nd  | `p9`                   | layout, close `p9`, split, run  | `p10`                 |
+| 3rd  | `p10`                  | layout, close `p10`, split, run | `p11`                 |
 
 #### Scenario: Closing a pane that has already gone is harmless
 
