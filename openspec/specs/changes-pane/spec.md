@@ -83,6 +83,26 @@ On every one of those exit paths the pane SHALL also close the viewer pane it re
 | SIGTERM       | 143       | yes            | yes                           |
 | SIGHUP        | 129       | yes            | yes                           |
 
+
+<!-- @trace
+source: herdr-spectra-pane-actions
+updated: 2026-09-09
+code:
+  - src/tui/FilterLine.tsx
+  - src/tui/change-order.ts
+  - src/tui/StatusBar.tsx
+  - src/tui/App.tsx
+  - src/tui/change-filter.ts
+  - src/tui/tree-model.ts
+  - src/tui/ChangeTree.tsx
+  - src/tui/AuthorPicker.tsx
+  - src/tui/keymap.ts
+tests:
+  - test/tui/App.test.tsx
+  - test/tui/change-order.test.ts
+  - test/tui/change-filter.test.ts
+-->
+
 ---
 ### Requirement: Display changes as a grouped tree
 
@@ -597,6 +617,21 @@ Modifier keys SHALL NOT be read from the button field, because the terminal does
 - **WHEN** stdin delivers `ESC[<0;17;18M`
 - **THEN** the process keeps running and no command is sent or copied
 
+
+<!-- @trace
+source: mouse-support
+updated: 2026-09-09
+code:
+  - src/pane.tsx
+  - src/tui/App.tsx
+  - src/tui/mouse.ts
+  - README.md
+tests:
+  - test/tui/App.test.tsx
+  - test/tui/mouse.test.ts
+  - test/tui/mouse-lifecycle.test.ts
+-->
+
 ---
 ### Requirement: Select, toggle, and open by clicking the tree
 
@@ -652,6 +687,24 @@ A left press whose row falls on a rendered tree row and whose column falls withi
 | 0       | 0           | 3                    | 2              |
 | 1       | 0           | 1                    | none           |
 | 1       | 5           | 3                    | 6              |
+
+
+<!-- @trace
+source: viewer-pager
+updated: 2026-09-09
+code:
+  - README.md
+  - src/herdr/client.ts
+  - src/tui/App.tsx
+  - src/pane.tsx
+  - src/tui/mouse.ts
+tests:
+  - test/tui/mouse.test.ts
+  - test/tui/App.test.tsx
+  - test/herdr/client.test.ts
+  - test/tui/mouse-lifecycle.test.ts
+  - test/tui/viewer.test.ts
+-->
 
 ---
 ### Requirement: Scroll with the mouse wheel
@@ -1034,6 +1087,24 @@ The tree-mode key hints SHALL be packed onto as many lines as the pane width req
 | 40              | `a one`, `b two`, `c three`              | `a one  b two  c three`            |
 | 6               | `a one`, `b two`, `c three`              | `a one`, `b two`, `c three`        |
 | 4               | `a one`, `verylonghint`, `b two`         | `a one`, `verylonghint`, `b two`   |
+
+
+<!-- @trace
+source: pane-initial-geometry
+updated: 2026-09-09
+code:
+  - src/tui/StatusBar.tsx
+  - src/tui/keymap.ts
+  - src/tui/hint-layout.ts
+  - src/pane.tsx
+  - src/herdr/client.ts
+  - src/tui/App.tsx
+tests:
+  - test/tui/frame-height.test.ts
+  - test/tui/App.test.tsx
+  - test/herdr/client.test.ts
+  - test/tui/hint-layout.test.ts
+-->
 
 ---
 ### Requirement: Open a Spectra command menu with the right button
