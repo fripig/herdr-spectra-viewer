@@ -13,8 +13,9 @@ herdr plugin install fripig/herdr-spectra-viewer
 ```
 
 Herdr clones the repository and runs `npm ci` and `npm run build` from the manifest's build steps.
-Open the pane with the `spectra-viewer: open` action, or run `node dist/pane.js` inside a Herdr
-pane.
+The pane is opened by the plugin's `open` action, which arrives bound to no key —
+[Opening the pane](#opening-the-pane) is how you call it and how you give it one. Running
+`node dist/pane.js` inside a Herdr pane works too.
 
 To work on the plugin itself, link a clone instead of installing it:
 
@@ -27,6 +28,38 @@ The action opens the pane as a split to the right of the pane you were working i
 beside your work rather than over it. The placement is asked for by the action itself, not by the
 manifest — the manifest's `placement` only applies to an invocation that names none, such as a bare
 `herdr plugin pane open`.
+
+## Opening the pane
+
+Run the action from any Herdr pane:
+
+```sh
+herdr plugin action invoke spectra-viewer.open
+```
+
+That is the path that needs nothing configured: the plugin is installed, so the action is there to be
+called by its qualified id — the plugin id and the action id joined.
+
+Nothing here ships bound to a key, and nothing is missing when you find none: a Herdr 0.9.0 plugin
+manifest has no field for a keybinding, so no plugin can carry one. The shortcut is yours to pick.
+Put the binding in your own Herdr configuration file, `~/.config/herdr/config.toml`:
+
+```toml
+[[keys.command]]
+key = "prefix+shift+s"
+type = "plugin_action"
+command = "spectra-viewer.open"
+description = "Open Spectra changes"
+```
+
+The key is an example, not a reservation — bind whatever Herdr accepts and whatever is free on your
+keyboard. `type` and `command` are the two lines that have to stay as written: `plugin_action` is the
+command type that reaches a plugin at all, and `spectra-viewer.open` is the same qualified id the
+command line takes. A server that is already running picks the edited file up on:
+
+```sh
+herdr server reload-config
+```
 
 ## Keys and mouse
 
