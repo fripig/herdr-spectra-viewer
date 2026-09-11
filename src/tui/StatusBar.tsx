@@ -5,7 +5,8 @@ import { statusBarLines } from "./hint-layout.js";
 
 export interface StatusBarProps {
   message: string | null;
-  skipped: number;
+  /** Entries in the scan's warning list: skipped changes and configuration problems alike. */
+  warnings: number;
   /** The pane width the hint lines are packed against. */
   width: number;
   /** Replaces the key lines while a modal input line owns the keyboard. */
@@ -17,7 +18,7 @@ export function hintLines(width: number, modalHints: readonly string[] | null): 
   return statusBarLines({ hints: VIEW_HINTS, commands: COMMAND_HINTS, modal: modalHints, width });
 }
 
-export function StatusBar({ message, skipped, width, modalHints }: StatusBarProps) {
+export function StatusBar({ message, warnings, width, modalHints }: StatusBarProps) {
   const lines = hintLines(width, modalHints ?? null);
   return (
     <Box flexDirection="column">
@@ -27,7 +28,7 @@ export function StatusBar({ message, skipped, width, modalHints }: StatusBarProp
       ))}
       <Text wrap="truncate-end">
         {message ?? ""}
-        {skipped > 0 ? (message ? "  " : "") + `${skipped} change(s) skipped` : ""}
+        {warnings > 0 ? (message ? "  " : "") + `${warnings} warning(s)` : ""}
       </Text>
     </Box>
   );

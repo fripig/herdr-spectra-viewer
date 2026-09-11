@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { render, useStdout } from "ink";
 import { execFileSync } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
-import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { scanChanges } from "./discovery/scan.js";
+import { scanChanges, specDirExists } from "./discovery/index.js";
 import { readInvocationContext } from "./herdr/context.js";
 import { readConfiguredViewer } from "./config.js";
 import { createHerdrClient, focusPane, openInEditorSplit, sendTextToPane } from "./herdr/client.js";
@@ -154,13 +153,7 @@ async function main(): Promise<void> {
       client={client}
       viewer={viewer}
       scan={scanChanges}
-      hasOpenspec={async (root) => {
-        try {
-          return (await stat(path.join(root, "openspec"))).isDirectory();
-        } catch {
-          return false;
-        }
-      }}
+      hasSpecDir={specDirExists}
       readArtifact={(p) => readFile(p, "utf8")}
       sendText={sendTextToPane}
       focusPane={focusPane}

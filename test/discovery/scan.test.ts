@@ -70,6 +70,47 @@ describe("scanChanges", () => {
     expect(snap.warnings).toEqual([]);
   });
 
+  it("reads changes from the configured spec directory", async () => {
+    await file(root, ".spectra.yaml", "spec_dir: docs/spectra\n");
+    await file(root, "docs/spectra/changes/add-search/proposal.md");
+    await file(root, "docs/spectra/changes/archive/old-login/proposal.md");
+    await file(root, ".git/spectra-app/changes/dark-mode/proposal.md");
+    const snap = await scanChanges(root);
+    expect(names(snap.active)).toEqual(["add-search"]);
+    expect(names(snap.archived)).toEqual(["old-login"]);
+    expect(names(snap.parked)).toEqual(["dark-mode"]);
+    expect(snap.warnings).toEqual([]);
+  });
+
+  it("ignores the legacy directory when another spec directory is configured", async () => {
+    await file(root, ".spectra.yaml", "spec_dir: docs/spectra\n");
+    await file(root, "docs/spectra/changes/add-search/proposal.md");
+    await file(root, "openspec/changes/stale-one/proposal.md");
+    expect(names((await scanChanges(root)).active)).toEqual(["add-search"]);
+  });
+
+  it("warns and uses the legacy directory when spec_dir escapes the project root", async () => {
+    await file(root, ".spectra.yaml", "spec_dir: ../outside\n");
+    await file(root, "openspec/changes/add-search/proposal.md");
+    const snap = await scanChanges(root);
+    expect(names(snap.active)).toEqual(["add-search"]);
+    expect(snap.warnings).toHaveLength(1);
+    expect(snap.warnings[0]).toContain(".spectra.yaml");
+  });
+
+  it("keeps scanning and records one warning when the configuration is unusable", async () => {
+    await file(root, ".spectra.yaml", "spec_dir: [unclosed\n");
+    await file(root, "openspec/changes/add-search/proposal.md");
+    await file(root, "openspec/changes/archive/old-login/proposal.md");
+    await file(root, ".git/spectra-app/changes/dark-mode/proposal.md");
+    const snap = await scanChanges(root);
+    expect(names(snap.active)).toEqual(["add-search"]);
+    expect(names(snap.archived)).toEqual(["old-login"]);
+    expect(names(snap.parked)).toEqual(["dark-mode"]);
+    expect(snap.warnings).toHaveLength(1);
+    expect(snap.warnings[0]).toContain(".spectra.yaml");
+  });
+
   it.skipIf(process.getuid?.() === 0)("omits an unreadable change and records one warning", async () => {
     await file(root, "openspec/changes/ok-1/proposal.md");
     await file(root, "openspec/changes/ok-2/proposal.md");

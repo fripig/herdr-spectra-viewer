@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveGitDir } from "./git-dir.js";
+import { resolveSpecDir } from "./spec-dir.js";
 import { listArtifacts, newestModification, readChangeMetadata } from "./metadata.js";
 import { deriveStatus, parseTaskProgress } from "./task-progress.js";
 import type { ChangeGroup, ScanSnapshot, SpectraChange } from "./types.js";
@@ -64,7 +65,10 @@ async function scanGroup(
  */
 export async function scanChanges(projectRoot: string): Promise<ScanSnapshot> {
   const warnings: string[] = [];
-  const changesDir = path.join(projectRoot, "openspec", "changes");
+  // Where the changes live is a question the project's configuration answers, not the file system.
+  const specDir = await resolveSpecDir(projectRoot);
+  if (specDir.warning) warnings.push(specDir.warning);
+  const changesDir = path.join(specDir.directory, "changes");
   const gitDir = await resolveGitDir(projectRoot);
   const parkedDir = gitDir ? path.join(gitDir, "spectra-app", "changes") : null;
   const [active, archived, parked] = await Promise.all([

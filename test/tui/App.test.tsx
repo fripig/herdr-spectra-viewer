@@ -40,7 +40,7 @@ interface MountOpts {
   paneId?: string | null;
   commandPaneId?: string | null;
   focusOk?: boolean;
-  hasOpenspec?: boolean;
+  hasSpecDir?: boolean;
   width?: number;
   height?: number;
   scan?: AppDeps["scan"];
@@ -90,7 +90,7 @@ async function mount(opts: MountOpts = {}): Promise<Harness> {
       herdrBin: "/x/herdr",
     },
     client, viewer: opts.viewer ?? "nvim", scan,
-    hasOpenspec: async () => opts.hasOpenspec ?? true,
+    hasSpecDir: async () => opts.hasSpecDir ?? true,
     readArtifact: async (p) => { const c = files.get(p); if (c === undefined) throw new Error("ENOENT"); return c; },
     sendText, focusPane, openEditor, copy, onExit, viewerPane,
     width: opts.width ?? 80, height: opts.height ?? 20,
@@ -111,8 +111,10 @@ const three = () => snapshot({
 });
 
 describe("states", () => {
-  it("shows the not-initialised message without openspec", async () => {
-    const h = await mount({ hasOpenspec: false });
+  it("shows the not-initialised message when there is no spec directory", async () => {
+    // The spec directory is resolved per project, so the message must not name one.
+    expect(NOT_INITIALISED).not.toContain("openspec");
+    const h = await mount({ hasSpecDir: false });
     expect(h.frame()).toContain(NOT_INITIALISED);
     expect(h.frame()).not.toContain("Active (");
   });
@@ -126,9 +128,9 @@ describe("states", () => {
     expect(h.frame()).not.toContain(SCANNING);
   });
 
-  it("counts skipped changes in the status bar", async () => {
+  it("counts warnings in the status bar", async () => {
     const h = await mount({ snap: snapshot({ warnings: ["a", "b"] }) });
-    expect(h.frame()).toContain("2 change(s) skipped");
+    expect(h.frame()).toContain("2 warning(s)");
   });
 
   it("exits with code 0 on q and on Escape", async () => {

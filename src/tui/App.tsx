@@ -16,7 +16,7 @@ import { menuContains, menuGeometry, menuItemAt, type MenuRect } from "./command
 import { hitTest, looksLikeMouse, parseMouse, type Layout, type MouseEvent } from "./mouse.js";
 import { GROUP_IDS, buildRows, groupKey, groupOfKey, windowStart, type Row } from "./tree-model.js";
 
-export const NOT_INITIALISED = "This project is not initialised for Spectra (no openspec directory).";
+export const NOT_INITIALISED = "This project is not initialised for Spectra (no spec directory).";
 export const SCANNING = "Scanning…";
 export const SELECT_CHANGE_FIRST = "Select a change first";
 export const NO_AUTHORS = "No authors to filter by";
@@ -43,7 +43,7 @@ export interface AppDeps {
   client: HerdrClient;
   viewer: string;
   scan: (projectRoot: string) => Promise<ScanSnapshot>;
-  hasOpenspec: (projectRoot: string) => Promise<boolean>;
+  hasSpecDir: (projectRoot: string) => Promise<boolean>;
   readArtifact: (absolutePath: string) => Promise<string>;
   sendText: (client: HerdrClient, paneId: string, text: string) => Promise<AdapterResult>;
   /** Moves keyboard focus from this pane back to the pane on its left. */
@@ -106,7 +106,7 @@ export function App(deps: AppDeps) {
 
   const runScan = useCallback(async () => {
     setScanning(true);
-    const ok = await deps.hasOpenspec(deps.projectRoot);
+    const ok = await deps.hasSpecDir(deps.projectRoot);
     if (!ok) {
       setInitialised(false);
       setScanning(false);
@@ -425,7 +425,7 @@ export function App(deps: AppDeps) {
     if (cmd) void sendCommand(cmd.command);
   });
 
-  const skipped = snapshot?.warnings.length ?? 0;
+  const warningCount = snapshot?.warnings.length ?? 0;
 
   let body: React.ReactNode;
   if (!initialised) body = <Text>{NOT_INITIALISED}</Text>;
@@ -446,7 +446,7 @@ export function App(deps: AppDeps) {
   return (
     <Box flexDirection="column" height={deps.height}>
       <Box flexGrow={1}>{body}</Box>
-      <StatusBar message={message} skipped={skipped} width={deps.width} modalHints={modalHints} />
+      <StatusBar message={message} warnings={warningCount} width={deps.width} modalHints={modalHints} />
       {menu ? <CommandMenu items={MENU_ITEMS} cursorIndex={menuIndex} rect={menu} /> : null}
     </Box>
   );
