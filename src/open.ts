@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { isEntryPoint } from "./entry-point.js";
 
 export const MISSING_BIN_MESSAGE = "HERDR_BIN_PATH is not set; run this action from Herdr.";
 
@@ -42,8 +43,7 @@ function spawnInherit(bin: string, args: string[]): Promise<number> {
   });
 }
 
-const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
-if (isMain) {
+if (isEntryPoint(import.meta.url, process.argv[1])) {
   runOpenAction({
     env: process.env,
     spawnProcess: spawnInherit,

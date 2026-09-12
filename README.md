@@ -29,6 +29,27 @@ beside your work rather than over it. The placement is asked for by the action i
 manifest — the manifest's `placement` only applies to an invocation that names none, such as a bare
 `herdr plugin pane open`.
 
+## Running it without Herdr
+
+The viewer also runs on its own, in any terminal, with nothing installed:
+
+```sh
+npx spectra-viewer
+```
+
+The project it shows is the directory you run it from — there is no Herdr to ask, so the current
+working directory is the project root. Installed rather than run through `npx`, the same program is
+available as `spectra-viewer` and as the short name `sv`.
+
+Two things work differently without Herdr, because both need a second pane that nobody can open:
+
+- Sending a `/spectra-*` command has nowhere to send it, so the command is copied to the clipboard
+  instead and the status bar says so. Paste it into whichever agent you are running.
+- Opening an artifact with `e` hands this terminal to the viewer instead of splitting a pane. The
+  frame disappears while the viewer has the terminal and is drawn again when you leave it, so
+  quitting `less` with `q` puts you back on the tree where you left off. The viewer command is
+  resolved exactly as it is under Herdr — see [Viewing an artifact](#viewing-an-artifact).
+
 ## Opening the pane
 
 Run the action from any Herdr pane:
@@ -104,7 +125,8 @@ the mouse moves, run `printf '\e[?1000l'` to switch it off by hand.
 
 ## Viewing an artifact
 
-Opening an artifact splits a pane to the right and shows the file there. The command comes from the
+Opening an artifact splits a pane to the right and shows the file there, or hands the current
+terminal to the viewer when there is no Herdr to split with. The command comes from the
 first of three sources that names one: the `SPECTRA_VIEWER` environment variable, the `viewer` field
 of this plugin's own configuration file, and `less`. Either of the first two is used as a command
 line, so flags work:

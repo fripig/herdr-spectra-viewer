@@ -16,7 +16,12 @@ export type AdapterResult = { ok: true } | { ok: false; reason: string };
  * A run that fails still leaves its pane on screen, so the failure carries the
  * id too; a split that never produced one carries nothing.
  */
-export type ViewerResult = { ok: true; paneId: string } | { ok: false; reason: string; paneId?: string };
+/**
+ * A successful opening carries the id of the pane the artifact is shown in, when there is one. The
+ * pager path shows the artifact in the terminal the program already owns, so it has no pane to name
+ * and reports null rather than a pane id that does not exist.
+ */
+export type ViewerResult = { ok: true; paneId: string | null } | { ok: false; reason: string; paneId?: string };
 
 /** Production client: spawns the Herdr binary directly, never through a shell. */
 export function createHerdrClient(bin: string | null): HerdrClient {

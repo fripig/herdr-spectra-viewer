@@ -1,16 +1,23 @@
 {
-  "name": "herdr-spectra-viewer",
+  "name": "spectra-viewer",
   "version": "0.1.0",
   "description": "Browse Spectra changes, preview artifacts, and hand /spectra-* commands to your working pane.",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "spectra-viewer": "dist/pane.js",
+    "sv": "dist/pane.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check-dist": "npm run build && test -f dist/pane.js && test -f dist/open.js",
+    "prepublishOnly": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

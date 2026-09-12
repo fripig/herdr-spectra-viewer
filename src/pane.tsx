@@ -1,15 +1,25 @@
+#!/usr/bin/env node
 import React, { useEffect, useState } from "react";
-import { render, useStdout } from "ink";
+import { render, useStdin, useStdout } from "ink";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
 import { scanChanges, specDirExists } from "./discovery/index.js";
+import { isEntryPoint } from "./entry-point.js";
 import { readInvocationContext } from "./herdr/context.js";
 import { readConfiguredViewer } from "./config.js";
 import { createHerdrClient, focusPane, openInEditorSplit, sendTextToPane } from "./herdr/client.js";
 import { copyToClipboard } from "./herdr/clipboard.js";
 import { resolveProjectRoot } from "./herdr/project-root.js";
 import { paneGeometry, type PaneGeometry } from "./herdr/client.js";
+import {
+  createTerminalControls,
+  openInPager,
+  spawnViewerProcess,
+  terminalHandover,
+  type SpawnViewer,
+  type TerminalControls,
+  type TerminalHandover,
+} from "./pager.js";
 import { App, type AppDeps } from "./tui/App.js";
 import { MOUSE_DISABLE, MOUSE_ENABLE } from "./tui/mouse.js";
 
@@ -67,6 +77,22 @@ export function resolveViewer(env: NodeJS.ProcessEnv, configured: string | null 
 }
 
 /**
+ * Which way an artifact gets shown, decided by how the program was started. With a Herdr binary the
+ * artifact goes to a pane beside this one, exactly as it always has. Without one there is no Herdr
+ * to ask, so the artifact takes over the terminal the pane already occupies.
+ *
+ * The binary path is the test rather than the pane id: no binary means no Herdr call can succeed,
+ * while a pane id without a binary is not a combination that can occur. The two adapters share one
+ * signature, so the component calls whichever it was given without knowing which it is.
+ */
+export function chooseOpenEditor(
+  herdrBin: string | null,
+  pager: { spawnViewer: SpawnViewer; terminal: TerminalHandover },
+): AppDeps["openEditor"] {
+  return herdrBin ? openInEditorSplit : openInPager(pager);
+}
+
+/**
  * Switches terminal mouse reporting on for the pane and off again on exit.
  * `shutdown` writes the disable sequence every time it is called; writing it
  * twice is harmless, so the exit paths below do not need to coordinate.
@@ -101,9 +127,24 @@ export function viewerLifecycle(close: (paneId: string) => void, ref: { current:
   };
 }
 
-function Sized({ initial, ...props }: Omit<AppDeps, "height" | "width"> & { initial: PaneGeometry | null }) {
-  const { stdout } = useStdout();
+function Sized({
+  initial,
+  controls,
+  ...props
+}: Omit<AppDeps, "height" | "width"> & { initial: PaneGeometry | null; controls: TerminalControls }) {
+  const { stdout, write } = useStdout();
+  const { setRawMode, isRawModeSupported } = useStdin();
   const [size, setSize] = useState(() => startupSize(initial, stdout));
+  // The two halves of the terminal handover that only a component can reach. A terminal that cannot
+  // do raw mode has no input for Ink to stop reading, so that slot stays empty there.
+  useEffect(() => {
+    controls.setRawMode = isRawModeSupported ? setRawMode : null;
+    controls.redraw = () => write("");
+    return () => {
+      controls.setRawMode = null;
+      controls.redraw = null;
+    };
+  }, [controls, isRawModeSupported, setRawMode, write]);
   useEffect(() => {
     // Every later size comes from the pty, which is right once Herdr has resized it.
     const onResize = () => setSize(startupSize(null, stdout));
@@ -127,6 +168,9 @@ async function main(): Promise<void> {
 
   const mouse = mouseLifecycle((s) => process.stdout.write(s));
   mouse.start();
+  // Filled in from two sides: the component registers what only it can reach, and the clear below
+  // waits for the render instance the call after it creates.
+  const controls = createTerminalControls();
   const viewerPane: { current: string | null } = { current: null };
   const viewerExit = viewerLifecycle((paneId) => {
     if (!context.herdrBin) return;
@@ -148,6 +192,7 @@ async function main(): Promise<void> {
   const app = render(
     <Sized
       initial={geometry}
+      controls={controls}
       projectRoot={projectRoot}
       context={context}
       client={client}
@@ -157,7 +202,10 @@ async function main(): Promise<void> {
       readArtifact={(p) => readFile(p, "utf8")}
       sendText={sendTextToPane}
       focusPane={focusPane}
-      openEditor={openInEditorSplit}
+      openEditor={chooseOpenEditor(context.herdrBin, {
+        spawnViewer: spawnViewerProcess,
+        terminal: terminalHandover(controls, (s) => process.stdout.write(s)),
+      })}
       copy={(text) => copyToClipboard(text)}
       viewerPane={viewerPane}
       onExit={(code) => {
@@ -167,9 +215,9 @@ async function main(): Promise<void> {
       }}
     />,
   );
+  controls.clear = () => app.clear();
   await app.waitUntilExit();
   mouse.shutdown();
 }
 
-const isEntryPoint = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isEntryPoint) void main();
+if (isEntryPoint(import.meta.url, process.argv[1])) void main();
