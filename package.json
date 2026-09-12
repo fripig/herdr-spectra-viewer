@@ -4,6 +4,14 @@
   "description": "Browse Spectra changes, preview artifacts, and hand /spectra-* commands to your working pane.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fripig/herdr-spectra-viewer.git"
+  },
+  "homepage": "https://github.com/fripig/herdr-spectra-viewer#readme",
+  "bugs": {
+    "url": "https://github.com/fripig/herdr-spectra-viewer/issues"
+  },
   "engines": {
     "node": ">=20"
   },
