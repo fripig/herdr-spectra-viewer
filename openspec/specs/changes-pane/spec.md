@@ -237,7 +237,7 @@ The tree SHALL occupy the full pane width; there is no preview column. Pressing 
 ---
 ### Requirement: Open an artifact in the editor
 
-Pressing `e` on an artifact node SHALL open that file in the user's viewer. Which viewer path is used SHALL follow the invocation environment: when the invocation context carries a Herdr binary path, the file SHALL open in a new pane split to the right of the pane that invoked the plugin, using the Herdr adapter; when it carries none, the file SHALL open in the terminal the pane already occupies, as the `standalone-cli` capability specifies. Every rule in this requirement that names a pane, a split, a close, or a ratio describes the Herdr path only. The viewer command SHALL be resolved from three sources, in order: the `SPECTRA_VIEWER` environment variable with surrounding whitespace removed; the `viewer` field of the plugin's configuration file with surrounding whitespace removed; and `less`. A source SHALL be used when it yields a non-empty string, and SHALL be passed over otherwise. The `EDITOR` environment variable SHALL NOT be consulted. The command run in the new pane SHALL be the viewer command, followed by the shell-quoted absolute path of the artifact, followed by a shell statement separator and the `exit` builtin, so the pane closes once the viewer ends, whether the viewer ended successfully or with an error.
+Pressing `e` on an artifact node SHALL open that file in the user's viewer. Which viewer path is used SHALL follow the invocation environment: when the invocation context carries a Herdr binary path, the file SHALL open in a new pane split to the right of the pane that invoked the plugin, using the Herdr adapter; when it carries none, the file SHALL open in the terminal the pane already occupies, as the `standalone-cli` capability specifies. Every rule in this requirement that names a pane, a split, a close, or a ratio describes the Herdr path only. The viewer command SHALL be resolved from four sources, in order: the viewer command given on the command line with surrounding whitespace removed, as the `standalone-cli` capability specifies; the `SPECTRA_VIEWER` environment variable with surrounding whitespace removed; the `viewer` field of the plugin's configuration file with surrounding whitespace removed; and `less`. A source SHALL be used when it yields a non-empty string, and SHALL be passed over otherwise. The `EDITOR` environment variable SHALL NOT be consulted. The command run in the new pane SHALL be the viewer command, followed by the shell-quoted absolute path of the artifact, followed by a shell statement separator and the `exit` builtin, so the pane closes once the viewer ends, whether the viewer ended successfully or with an error.
 
 The plugin's configuration file SHALL be `config.json` in the directory named by the `HERDR_PLUGIN_CONFIG_DIR` environment variable, and SHALL be read once when the pane starts. Its content SHALL be a JSON object, of which only the `viewer` field SHALL be read. The configuration source SHALL be passed over when `HERDR_PLUGIN_CONFIG_DIR` is unset or empty, when the file cannot be read, when its content is not valid JSON, when its top level is not an object, when the `viewer` field is absent, when the `viewer` field is not a string, and when the `viewer` field holds only whitespace. A file that exists but cannot be used SHALL report one warning line; an absent directory, an absent file, and an absent `viewer` field SHALL report nothing. No configuration failure SHALL prevent the pane from starting or change the process exit code.
 
@@ -257,31 +257,49 @@ The status bar SHALL show `Opened in <viewer command>` on success, on both viewe
 
 #### Scenario: Open an artifact in the viewer split
 
-- **GIVEN** `SPECTRA_VIEWER` is unset, no configuration file is present, and the cursor is on artifact `proposal.md` of change `add-search`
+- **GIVEN** no viewer command was given on the command line, `SPECTRA_VIEWER` is unset, no configuration file is present, and the cursor is on artifact `proposal.md` of change `add-search`
 - **WHEN** the user presses `e`
 - **THEN** the adapter is asked to split a pane and to run a command that starts with `less`, carries the artifact's shell-quoted absolute path, and ends with the `exit` builtin, and the status bar shows `Opened in less`
 
+#### Scenario: The viewer command comes from the command line
+
+- **GIVEN** the pane was started with a command-line viewer command of `mdcat -p`
+- **WHEN** the user presses `e` on an artifact node
+- **THEN** the viewer runs as `mdcat` with `-p` and the artifact's path, and the status bar shows `Opened in mdcat -p`
+
+#### Scenario: The command line wins over both standing sources
+
+- **GIVEN** the pane was started with a command-line viewer command of `mdcat -p`, `SPECTRA_VIEWER` is `nvim`, and the configuration file holds `{ "viewer": "frogmouth" }`
+- **WHEN** the user presses `e` on an artifact node
+- **THEN** the viewer runs `mdcat`, not `nvim` and not `frogmouth`
+
+#### Scenario: A command-line viewer command of only whitespace is passed over
+
+- **GIVEN** the pane was started with a command-line viewer command holding only whitespace and `SPECTRA_VIEWER` is `nvim`
+- **WHEN** the user presses `e` on an artifact node
+- **THEN** the viewer runs `nvim`
+
 #### Scenario: The viewer command comes from SPECTRA_VIEWER
 
-- **GIVEN** `SPECTRA_VIEWER` is `nvim`
+- **GIVEN** no viewer command was given on the command line and `SPECTRA_VIEWER` is `nvim`
 - **WHEN** the user presses `e` on an artifact node
 - **THEN** the adapter runs a command that starts with `nvim`, carries the artifact's shell-quoted absolute path, and ends with the `exit` builtin, and the status bar shows `Opened in nvim`
 
 #### Scenario: The viewer command comes from the configuration file
 
-- **GIVEN** `SPECTRA_VIEWER` is unset and the configuration file holds `{ "viewer": "frogmouth" }`
+- **GIVEN** no viewer command was given on the command line, `SPECTRA_VIEWER` is unset, and the configuration file holds `{ "viewer": "frogmouth" }`
 - **WHEN** the user presses `e` on an artifact node
 - **THEN** the adapter runs a command that starts with `frogmouth`, and the status bar shows `Opened in frogmouth`
 
 #### Scenario: The environment variable wins over the configuration file
 
-- **GIVEN** `SPECTRA_VIEWER` is `nvim` and the configuration file holds `{ "viewer": "frogmouth" }`
+- **GIVEN** no viewer command was given on the command line, `SPECTRA_VIEWER` is `nvim`, and the configuration file holds `{ "viewer": "frogmouth" }`
 - **WHEN** the user presses `e` on an artifact node
 - **THEN** the adapter runs `nvim`, not `frogmouth`
 
 #### Scenario: An unusable configuration file falls back and reports
 
-- **GIVEN** `SPECTRA_VIEWER` is unset and the configuration file does not hold valid JSON
+- **GIVEN** no viewer command was given on the command line, `SPECTRA_VIEWER` is unset, and the configuration file does not hold valid JSON
 - **WHEN** the pane starts and the user presses `e` on an artifact node
 - **THEN** one warning line is reported, the adapter runs `less`, and the pane starts and stays open as usual
 
@@ -293,24 +311,30 @@ The status bar SHALL show `Opened in <viewer command>` on success, on both viewe
 
 #### Scenario: EDITOR no longer selects the viewer
 
-- **GIVEN** `EDITOR` is `nvim`, `SPECTRA_VIEWER` is unset, and no configuration file is present
+- **GIVEN** `EDITOR` is `nvim`, no viewer command was given on the command line, `SPECTRA_VIEWER` is unset, and no configuration file is present
 - **WHEN** the user presses `e` on an artifact node
 - **THEN** the adapter runs `less`, not `nvim`
 
 ##### Example: resolved viewer command
 
-| SPECTRA_VIEWER | config `viewer` | EDITOR | resolved viewer |
-| -------------- | --------------- | ------ | --------------- |
-| unset          | absent          | unset  | `less`          |
-| unset          | absent          | `nvim` | `less`          |
-| `nvim`         | absent          | unset  | `nvim`          |
-| `nvim`         | `vi`            | `vi`   | `nvim`          |
-| `   `          | absent          | `nvim` | `less`          |
-| `  bat  `      | absent          | unset  | `bat`           |
-| unset          | `frogmouth`     | unset  | `frogmouth`     |
-| unset          | `  frogmouth  ` | unset  | `frogmouth`     |
-| `   `          | `frogmouth`     | unset  | `frogmouth`     |
-| unset          | `   `           | unset  | `less`          |
+| command line | SPECTRA_VIEWER | config `viewer` | EDITOR | resolved viewer |
+| ------------ | -------------- | --------------- | ------ | --------------- |
+| absent       | unset          | absent          | unset  | `less`          |
+| absent       | unset          | absent          | `nvim` | `less`          |
+| absent       | `nvim`         | absent          | unset  | `nvim`          |
+| absent       | `nvim`         | `vi`            | `vi`   | `nvim`          |
+| absent       | `   `          | absent          | `nvim` | `less`          |
+| absent       | `  bat  `      | absent          | unset  | `bat`           |
+| absent       | unset          | `frogmouth`     | unset  | `frogmouth`     |
+| absent       | unset          | `  frogmouth  ` | unset  | `frogmouth`     |
+| absent       | `   `          | `frogmouth`     | unset  | `frogmouth`     |
+| absent       | unset          | `   `           | unset  | `less`          |
+| `mdcat -p`   | unset          | absent          | unset  | `mdcat -p`      |
+| `mdcat -p`   | `nvim`         | `frogmouth`     | `nvim` | `mdcat -p`      |
+| `  bat  `    | unset          | absent          | unset  | `bat`           |
+| `   `        | `nvim`         | absent          | unset  | `nvim`          |
+| `   `        | unset          | `frogmouth`     | unset  | `frogmouth`     |
+| `   `        | unset          | absent          | unset  | `less`          |
 
 ##### Example: configuration file outcomes
 
@@ -415,6 +439,20 @@ The status bar SHALL show `Opened in <viewer command>` on success, on both viewe
 - **GIVEN** the adapter reports that the split could not be created
 - **WHEN** the user presses `e` on an artifact node
 - **THEN** the status bar shows `Could not open viewer` and the tree is unchanged
+
+
+<!-- @trace
+source: add-viewer-flag
+updated: 2026-09-12
+code:
+  - src/pane.tsx
+  - src/cli-args.ts
+  - README.md
+tests:
+  - test/cli-args.test.ts
+  - test/pager.test.ts
+  - test/tui/viewer.test.ts
+-->
 
 ---
 ### Requirement: Rescan on demand

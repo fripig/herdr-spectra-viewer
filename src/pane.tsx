@@ -7,6 +7,7 @@ import { scanChanges, specDirExists } from "./discovery/index.js";
 import { isEntryPoint } from "./entry-point.js";
 import { readInvocationContext } from "./herdr/context.js";
 import { readConfiguredViewer } from "./config.js";
+import { HELP_HINT, packageVersion, parseCliArgs, USAGE } from "./cli-args.js";
 import { createHerdrClient, focusPane, openInEditorSplit, sendTextToPane } from "./herdr/client.js";
 import { copyToClipboard } from "./herdr/clipboard.js";
 import { resolveProjectRoot } from "./herdr/project-root.js";
@@ -66,14 +67,32 @@ export const DEFAULT_VIEWER = "less";
 export const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 } as const;
 
 /**
- * The command that shows an artifact, taken from the first source that yields a
- * non-empty string: the environment variable, which overrides for one run; the
- * plugin's own configuration file, which is the standing preference; then the
- * pager. `EDITOR` is deliberately not consulted: it is shared with git and every
- * other tool, so a pager here would leak into them.
+ * Where a viewer command can come from. Named rather than positional because the order these are
+ * consulted in is not the order they would naturally be passed in: the command line is the last
+ * thing added and the first thing honoured, so a third positional parameter would invite a reader to
+ * take its position for its precedence. Only the environment is required — a caller with neither a
+ * command line nor a configuration file to offer says nothing about them.
  */
-export function resolveViewer(env: NodeJS.ProcessEnv, configured: string | null = null): string {
-  return env.SPECTRA_VIEWER?.trim() || configured?.trim() || DEFAULT_VIEWER;
+export interface ViewerSources {
+  flag?: string | null;
+  env: NodeJS.ProcessEnv;
+  configured?: string | null;
+}
+
+/**
+ * The command that shows an artifact, taken from the first source that yields a
+ * non-empty string: the command line, which settles one run outright; the
+ * environment variable, which overrides for one shell; the plugin's own
+ * configuration file, which is the standing preference; then the pager.
+ * `EDITOR` is deliberately not consulted: it is shared with git and every other
+ * tool, so a pager here would leak into them.
+ *
+ * All four live here rather than being split between this function and its caller, so that the
+ * question the spec and the README both answer — which source wins — has exactly one answer in the
+ * code as well.
+ */
+export function resolveViewer({ flag, env, configured }: ViewerSources): string {
+  return flag?.trim() || env.SPECTRA_VIEWER?.trim() || configured?.trim() || DEFAULT_VIEWER;
 }
 
 /**
@@ -156,7 +175,39 @@ function Sized({
   return <App {...props} width={size.width} height={size.height} />;
 }
 
+/** 128 + the signal number is the shell's convention; 2 is its convention for being asked wrongly. */
+export const USAGE_ERROR_EXIT_CODE = 2;
+/** Asked for something that should have been there and was not. */
+export const UNREADABLE_VERSION_EXIT_CODE = 1;
+
 async function main(): Promise<void> {
+  // The arguments are settled first, ahead of every other startup step, so that asking this program
+  // a question about itself never depends on there being a project to scan, a Herdr to reach, or a
+  // terminal to draw on. Answering and exiting here leaves the rest of this function to the one
+  // outcome that wants a pane.
+  const invocation = parseCliArgs(process.argv.slice(2));
+  if (invocation.kind === "help") {
+    process.stdout.write(`${USAGE}\n`);
+    return;
+  }
+  if (invocation.kind === "version") {
+    try {
+      process.stdout.write(`${packageVersion()}\n`);
+    } catch (error) {
+      process.stderr.write(`could not read the package version: ${(error as Error).message}\n`);
+      process.exitCode = UNREADABLE_VERSION_EXIT_CODE;
+    }
+    return;
+  }
+  if (invocation.kind === "usage-error") {
+    process.stderr.write(`${invocation.message}\n`);
+    process.stderr.write(`${HELP_HINT}\n`);
+    process.exitCode = USAGE_ERROR_EXIT_CODE;
+    return;
+  }
+  // A source that could not be used is worth a line, and never worth refusing to start over.
+  for (const line of invocation.warnings) process.stderr.write(`${line}\n`);
+
   const context = readInvocationContext(process.env, process.cwd());
   const client = createHerdrClient(context.herdrBin);
   // Independent lookups, both needed before the first frame.
@@ -164,7 +215,13 @@ async function main(): Promise<void> {
     resolveProjectRoot(context, client),
     startupGeometry(client, context.paneId),
   ]);
-  const viewer = resolveViewer(process.env, readConfiguredViewer(process.env));
+  // One viewer command, resolved once, used by whichever adapter this run picked: the command line
+  // settles it for both the Herdr split and the terminal hand-over.
+  const viewer = resolveViewer({
+    flag: invocation.viewer,
+    env: process.env,
+    configured: readConfiguredViewer(process.env),
+  });
 
   const mouse = mouseLifecycle((s) => process.stdout.write(s));
   mouse.start();

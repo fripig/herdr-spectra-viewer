@@ -50,6 +50,32 @@ Two things work differently without Herdr, because both need a second pane that 
   quitting `less` with `q` puts you back on the tree where you left off. The viewer command is
   resolved exactly as it is under Herdr — see [Viewing an artifact](#viewing-an-artifact).
 
+### Options
+
+```sh
+spectra-viewer --viewer 'mdcat -p'   # show artifacts with this command, for this run
+spectra-viewer --help                # print the options and exit
+spectra-viewer --version             # print the version and exit
+```
+
+`--help` and `--version` print and exit without drawing anything, so both work where there is no
+terminal to draw on — down a pipe, or in a script reading the version back. `--help` wins whenever
+more than one of the three is given, so `--help --version` prints the usage text, and so does a
+`--help` alongside an option this program does not know. `--viewer` is the highest-priority viewer
+source; its value may also be written as `--viewer=<command>`, and giving the option twice keeps the
+last one.
+
+There are no positional arguments — the project shown is always the directory you run the program
+from — and there are no short aliases, because `-v` is the usual short name for both a version and a
+verbose flag and binding it to either would spend the name the other may want. Anything else on the
+command line is refused: a misspelled option, a stray path, or the `--style=plain` left over from an
+unquoted viewer command each produce two lines on stderr — one naming the argument, one pointing at
+`--help` — and exit status 2, with no pane started.
+
+A `--viewer` that reaches no value is the one thing that is reported without being refused: no value
+after it, an empty value, or a value of only whitespace each print one line to stderr, and the pane
+starts with the next viewer source down.
+
 ## Opening the pane
 
 Run the action from any Herdr pane:
@@ -126,14 +152,21 @@ the mouse moves, run `printf '\e[?1000l'` to switch it off by hand.
 ## Viewing an artifact
 
 Opening an artifact splits a pane to the right and shows the file there, or hands the current
-terminal to the viewer when there is no Herdr to split with. The command comes from the
-first of three sources that names one: the `SPECTRA_VIEWER` environment variable, the `viewer` field
-of this plugin's own configuration file, and `less`. Either of the first two is used as a command
-line, so flags work:
+terminal to the viewer when there is no Herdr to split with. The command comes from the first of
+four sources that names one: the `--viewer` option, which settles a single run; the `SPECTRA_VIEWER`
+environment variable, which settles a shell; the `viewer` field of this plugin's own configuration
+file, which is the standing preference; and `less`. Any of the first three is used as a command line,
+so flags work:
 
 ```sh
+spectra-viewer --viewer 'bat --style=plain'
 export SPECTRA_VIEWER='bat --style=plain'
 ```
+
+A viewer command that carries flags of its own has to reach the program as a single argument, so
+quote it. Written without the quotes, `--viewer bat --style=plain` gives the option `bat` alone and
+leaves `--style=plain` as an argument nothing recognises — which is refused with a message, rather
+than quietly running a viewer you did not ask for.
 
 The split pane closes itself as soon as the viewer ends — leaving `less` with `q` makes the pane
 disappear, with nothing to close by hand. That also means a viewer that fails on startup takes its
@@ -142,20 +175,29 @@ so the output stays on screen.
 
 ### Setting the viewer for good
 
-The environment variable is the right lever for one run, but the pane is spawned by the Herdr server
-rather than by an interactive shell, so an `export` in a shell profile does not reliably reach it.
-The setting that sticks lives in the configuration directory Herdr keeps for this plugin — run
-`herdr plugin config-dir spectra-viewer` to print it, normally
-`~/.config/herdr/plugins/config/spectra-viewer`. Create `config.json` there:
+Which lever makes a viewer stick depends on how the pane is started.
+
+Run on its own, an `export` in a shell profile is enough, because the program is started by your own
+interactive shell and inherits what that shell exports:
+
+```sh
+export SPECTRA_VIEWER='bat --style=plain'
+```
+
+`--viewer` is then how a single run gets a different reader without touching the profile.
+
+Under Herdr the pane is spawned by the Herdr server rather than by an interactive shell, so an
+`export` in a shell profile does not reliably reach it. The setting that sticks lives in the
+configuration directory Herdr keeps for this plugin — run `herdr plugin config-dir spectra-viewer`
+to print it, normally `~/.config/herdr/plugins/config/spectra-viewer`. Create `config.json` there:
 
 ```json
 { "viewer": "frogmouth" }
 ```
 
-The value has the same shape as `SPECTRA_VIEWER`: a command line, flags included. The file is read
+The value has the same shape as the other two: a command line, flags included. The file is read
 once when the changes pane starts, so a pane that is already open keeps the viewer it started with.
-`SPECTRA_VIEWER` still wins when it is set, which is how a single run gets a different reader without
-editing the file.
+`SPECTRA_VIEWER` still wins over the file when it is set, and `--viewer` wins over both.
 
 Nothing here has to exist. No directory, no file, and no `viewer` field all mean the same thing as
 before — `less`. A file that is there but cannot be used (not valid JSON, or a `viewer` that is not a
@@ -213,5 +255,6 @@ Only one viewer pane is ever on screen. Opening a second artifact without quitti
 replaces that pane instead of stacking a new one beside it, so browsing a handful of artifacts in a
 row leaves nothing to tidy up.
 
-`EDITOR` is **not** consulted. If you relied on it before, set `SPECTRA_VIEWER`, or the configuration
-file's `viewer`, to the same value.
+`EDITOR` is **not** consulted, and neither is `PAGER`. Both are shared with git and every other tool,
+so a reader chosen here would leak into them. If you relied on `EDITOR` before, pass it to
+`--viewer`, or set `SPECTRA_VIEWER`, or the configuration file's `viewer`, to the same value.

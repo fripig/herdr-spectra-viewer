@@ -110,10 +110,10 @@ describe("openInPager", () => {
 
 describe("the pager path does not introduce PAGER as a source", () => {
   it("resolves to the default viewer even when PAGER names another one", () => {
-    expect(resolveViewer({ PAGER: "bat" }, null)).toBe("less");
+    expect(resolveViewer({ env: { PAGER: "bat" }, configured: null })).toBe("less");
   });
 
   it("lets SPECTRA_VIEWER win over PAGER", () => {
-    expect(resolveViewer({ PAGER: "bat", SPECTRA_VIEWER: "nvim" }, null)).toBe("nvim");
+    expect(resolveViewer({ env: { PAGER: "bat", SPECTRA_VIEWER: "nvim" }, configured: null })).toBe("nvim");
   });
 });
